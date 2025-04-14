@@ -100,7 +100,109 @@ if [ ! -f "workbooks/feed-health.json" ]; then
     }' > workbooks/feed-health.json
     echo "Created Feed Health workbook."
 fi
+# Additional workbook creation sections to add to deploy.sh after the existing workbook creation blocks
 
+# MITRE ATT&CK Mapping Workbook
+if [ ! -f "workbooks/mitre-mapping.json" ]; then
+    echo '{
+        "version": "Notebook/1.0",
+        "items": [
+            {
+                "type": 1,
+                "content": {
+                    "json": "# CTI - MITRE ATT&CK Coverage\\nThis workbook analyzes the coverage of your threat intelligence across the MITRE ATT&CK framework."
+                },
+                "name": "text - 0"
+            },
+            {
+                "type": 3,
+                "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "CTI_TacticsTechniques_CL\\n| summarize IndicatorCount=dcount(IndicatorId_g) by TacticId_s, TacticName_s\\n| order by IndicatorCount desc",
+                    "size": 0,
+                    "title": "Indicators by MITRE Tactic",
+                    "timeContext": {
+                        "durationMs": 2592000000
+                    },
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "barchart"
+                },
+                "name": "indicators-by-tactic"
+            }
+        ],
+        "styleSettings": {}
+    }' > workbooks/mitre-mapping.json
+    echo "Created MITRE ATT&CK Mapping workbook."
+fi
+
+# Threat Actor Tracking Workbook
+if [ ! -f "workbooks/threat-actor.json" ]; then
+    echo '{
+        "version": "Notebook/1.0",
+        "items": [
+            {
+                "type": 1,
+                "content": {
+                    "json": "# CTI - Threat Actor Tracking\\nThis workbook tracks threat actors and their associated indicators."
+                },
+                "name": "text - 0"
+            },
+            {
+                "type": 3,
+                "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "CTI_ThreatIntelObjects_CL\\n| where Type_s == \\"threat-actor\\"\\n| summarize count() by Name_s\\n| order by count_ desc",
+                    "size": 0,
+                    "title": "Indicators by Threat Actor",
+                    "timeContext": {
+                        "durationMs": 2592000000
+                    },
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "barchart"
+                },
+                "name": "indicators-by-actor"
+            }
+        ],
+        "styleSettings": {}
+    }' > workbooks/threat-actor.json
+    echo "Created Threat Actor Tracking workbook."
+fi
+
+# False Positive Analysis Workbook
+if [ ! -f "workbooks/false-positive.json" ]; then
+    echo '{
+        "version": "Notebook/1.0",
+        "items": [
+            {
+                "type": 1,
+                "content": {
+                    "json": "# CTI - False Positive Analysis\\nThis workbook analyzes false positives and feedback on indicators."
+                },
+                "name": "text - 0"
+            },
+            {
+                "type": 3,
+                "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "CTI_AnalyticsFeedback_CL\\n| where FeedbackType_s == \\"False Positive\\"\\n| summarize count() by SourceFeed_s = coalesce(SourceSystem_s, \\"Unknown\\")\\n| order by count_ desc",
+                    "size": 0,
+                    "title": "False Positives by Feed Source",
+                    "timeContext": {
+                        "durationMs": 2592000000
+                    },
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "visualization": "barchart"
+                },
+                "name": "false-positives-by-source"
+            }
+        ],
+        "styleSettings": {}
+    }' > workbooks/false-positive.json
+    echo "Created False Positive Analysis workbook."
+fi
 # IOC Lifecycle Workbook
 if [ ! -f "workbooks/ioc-lifecycle.json" ]; then
     echo '{
