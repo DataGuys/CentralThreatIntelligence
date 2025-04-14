@@ -2948,3 +2948,243 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
               }
             },
             method: 'post',
+// Housekeeping Logic App - Continues from where it was cut off
+            path: '/queryData',
+            queries: {
+              resourcegroups: '@resourceGroup().name',
+              resourcename: '@{parameters(\'ctiWorkspaceName\')}',
+              resourcetype: 'Log Analytics Workspace',
+              subscriptions: '@{subscription().subscriptionId}',
+              timerange: 'Last day'
+            }
+          }
+        },
+        For_Each_Expired_IP: {
+          foreach: '@body(\'Update_Expired_IP_Indicators\').tables[0].rows',
+          actions: {
+            Update_IP_to_Inactive: {
+              runAfter: {},
+              type: 'ApiConnection',
+              inputs: {
+                body: {
+                  IPAddress_s: '@{item()[1]}',
+                  IndicatorId_g: '@{item()[0]}',
+                  Active_b: false
+                },
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                },
+                method: 'post',
+                path: '/api/logs',
+                queries: {
+                  logType: 'CTI_IPIndicators_CL'
+                }
+              }
+            },
+            Log_Indicator_Expiration: {
+              runAfter: {
+                Update_IP_to_Inactive: [
+                  'Succeeded'
+                ]
+              },
+              type: 'ApiConnection',
+              inputs: {
+                body: {
+                  IndicatorType_s: 'IP',
+                  IndicatorValue_s: '@{item()[1]}',
+                  Action_s: 'Expire',
+                  TargetSystem_s: 'All',
+                  Status_s: 'Success',
+                  Timestamp_t: '@{utcNow()}',
+                  ActionId_g: '@{guid()}',
+                  CorrelationId_g: '@{guid()}',
+                  IndicatorId_g: '@{item()[0]}',
+                  RunbookName_s: 'CTI-Housekeeping',
+                  TriggerSource_s: 'Scheduled'
+                },
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                },
+                method: 'post',
+                path: '/api/logs',
+                queries: {
+                  logType: 'CTI_TransactionLog_CL'
+                }
+              }
+            }
+          },
+          runAfter: {
+            Update_Expired_IP_Indicators: [
+              'Succeeded'
+            ]
+          },
+          type: 'Foreach',
+          runtimeConfiguration: {
+            concurrency: {
+              repetitions: 10
+            }
+          }
+        }
+      },
+      outputs: {}
+    },
+    parameters: {
+      '$connections': {
+        value: {
+          azureloganalyticsdatacollector: {
+            connectionId: '[resourceId(\'Microsoft.Web/connections\', \'azureloganalyticsdatacollector\')]',
+            connectionName: 'azureloganalyticsdatacollector',
+            id: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.Web/locations/\', resourceGroup().location, \'/managedApis/azureloganalyticsdatacollector\')]'
+          },
+          azuremonitorlogs: {
+            connectionId: '[resourceId(\'Microsoft.Web/connections\', \'azuremonitorlogs\')]',
+            connectionName: 'azuremonitorlogs',
+            id: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.Web/locations/\', resourceGroup().location, \'/managedApis/azuremonitorlogs\')]'
+          }
+        }
+      }
+    }
+  }
+}
+
+// Key Vault for storing secrets
+resource keyVault 'Microsoft.KeyVault/vaults@2022-07-01' = {
+  name: 'kv-cti-secrets'
+  location: location
+  properties: {
+    enabledForDeployment: true
+    enabledForTemplateDeployment: true
+    enabledForDiskEncryption: true
+    enableRbacAuthorization: true
+    tenantId: subscription().tenantId
+    sku: {
+      name: 'standard'
+      family: 'A'
+    }
+    networkAcls: {
+      defaultAction: 'Allow'
+      bypass: 'AzureServices'
+    }
+  }
+}
+
+// Add the client secret to Key Vault
+resource clientSecretValue 'Microsoft.KeyVault/vaults/secrets@2022-07-01' = {
+  parent: keyVault
+  name: 'clientSecret'
+  properties: {
+    value: 'YourClientSecretHere' // Replace during deployment
+  }
+}
+
+// Logic App API Connections
+resource logAnalyticsConnection 'Microsoft.Web/connections@2016-06-01' = {
+  name: 'azureloganalyticsdatacollector'
+  location: location
+  properties: {
+    displayName: 'Log Analytics Data Collector'
+    api: {
+      id: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.Web/locations/\', resourceGroup().location, \'/managedApis/azureloganalyticsdatacollector\')]'
+    },
+    parameterValues: {
+      'workspace': ctiWorkspace.properties.customerId,
+      'workspaceKey': listKeys(ctiWorkspace.id, '2022-10-01').primarySharedKey
+    }
+  }
+}
+
+resource logAnalyticsQueryConnection 'Microsoft.Web/connections@2016-06-01' = {
+  name: 'azuremonitorlogs'
+  location: location
+  properties: {
+    displayName: 'Azure Monitor Logs'
+    api: {
+      id: '[concat(\'/subscriptions/\', subscription().subscriptionId, \'/providers/Microsoft.Web/locations/\', resourceGroup().location, \'/managedApis/azuremonitorlogs\')]'
+    },
+    parameterValues: {
+      'token:TenantId': subscription().tenantId,
+      'token:clientId': '[parameters(\'appClientId\')]',
+      'token:clientSecret': '[listSecrets(resourceId(\'Microsoft.KeyVault/vaults/secrets\', \'kv-cti-secrets\', \'clientSecret\'), \'2022-07-01\').value]',
+      'token:grantType': 'client_credentials'
+    }
+  }
+}
+
+// Microsoft Sentinel integration resources
+resource sentinel 'Microsoft.OperationsManagement/solutions@2015-11-01-preview' = if(enableSentinelIntegration) {
+  name: 'SecurityInsights(${ctiWorkspace.name})'
+  location: location
+  properties: {
+    workspaceResourceId: ctiWorkspace.id
+  }
+  plan: {
+    name: 'SecurityInsights(${ctiWorkspace.name})'
+    publisher: 'Microsoft'
+    product: 'OMSGallery/SecurityInsights'
+    promotionCode: ''
+  }
+}
+
+// Sentinel Data Connector for CTI workspace (if using existing Sentinel)
+resource sentinelDataConnector 'Microsoft.SecurityInsights/dataConnectors@2022-11-01' = if(enableSentinelIntegration && !empty(existingSentinelWorkspaceId)) {
+  scope: resourceGroup(split(existingSentinelWorkspaceId, '/')[2], split(existingSentinelWorkspaceId, '/')[4])
+  name: 'CTI-Workspace-Connector'
+  kind: 'AzureLogAnalytics'
+  properties: {
+    tenantId: subscription().tenantId
+    subscriptionId: subscription().subscriptionId
+    workspaceResourceId: ctiWorkspace.id
+    dataTypes: {
+      alerts: {
+        state: 'enabled'
+      }
+    }
+  }
+}
+
+// Cross-workspace query Analytics Rules
+resource ipMatchingRule 'Microsoft.SecurityInsights/alertRules@2022-11-01' = if(enableSentinelIntegration) {
+  scope: resourceGroup()
+  name: 'CTI-IP-Match-Rule'
+  kind: 'Scheduled'
+  properties: {
+    displayName: 'Traffic to CTI flagged IP addresses'
+    enabled: true
+    query: '''
+    let IPIndicators = CTI_IPIndicators_CL
+    | where ConfidenceScore_d >= 70 and Active_b == true
+    | project IPAddress = IPAddress_s, ThreatType = ThreatType_s, Confidence = ConfidenceScore_d, Description = Description_s;
+    
+    CommonSecurityLog
+    | where DeviceAction !~ "block"
+    | where isnotempty(DestinationIP) 
+    | join kind=inner IPIndicators on $left.DestinationIP == $right.IPAddress
+    | project TimeGenerated, DeviceName, SourceIP, DestinationIP, ThreatType, Confidence, Description
+    '''
+    queryFrequency: 'PT1H'
+    queryPeriod: 'PT1H'
+    severity: 'Medium'
+    suppressionDuration: 'PT1H'
+    suppressionEnabled: false
+    tactics: [
+      'CommandAndControl'
+      'Exfiltration'
+    ]
+    triggerOperator: 'GreaterThan'
+    triggerThreshold: 0
+  }
+  dependsOn: [
+    ctiWorkspace
+    sentinel
+  ]
+}
+
+// Outputs
+output ctiWorkspaceId string = ctiWorkspace.id
+output ctiWorkspaceName string = ctiWorkspace.name
+output ctiWorkspaceCustomerId string = ctiWorkspace.properties.customerId
+output sentinelEnabled string = enableSentinelIntegration ? 'Yes' : 'No'
