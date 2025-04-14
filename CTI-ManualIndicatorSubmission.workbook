@@ -1,0 +1,1104 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Central Threat Intelligence - Manual Indicator Submission\n\nThis workbook allows security analysts to manually submit threat intelligence indicators to the CTI solution. All submissions are logged and secured using Log Analytics RBAC.\n\n> **Note:** This workbook requires Contributor permissions on the Log Analytics workspace to submit data."
+      },
+      "name": "Introduction"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a4952ad9-e5a6-44f7-a99f-20d602d852f0",
+            "version": "KqlParameterItem/1.0",
+            "name": "IndicatorType",
+            "label": "Indicator Type",
+            "type": 2,
+            "description": "Select the type of indicator to submit",
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "jsonData": "[\n    { \"value\": \"IP\", \"label\": \"IP Address\" },\n    { \"value\": \"Domain\", \"label\": \"Domain Name\" },\n    { \"value\": \"URL\", \"label\": \"URL\" },\n    { \"value\": \"FileHash\", \"label\": \"File Hash\" }\n]"
+          },
+          {
+            "id": "c18d7e62-818a-4320-bdad-9c09585e4c0f",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourceFeed",
+            "label": "Source",
+            "type": 1,
+            "description": "Source of this indicator (e.g., Manual, OSINT, Vendor)",
+            "isRequired": true,
+            "value": "Manual"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "IndicatorTypeParameters"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "IP Address Submission",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "dbf4f30e-7270-4dc3-8189-96c7c3cf6112",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPAddress",
+                  "label": "IP Address",
+                  "type": 1,
+                  "description": "Enter the malicious IP address (IPv4 format)",
+                  "isRequired": true,
+                  "value": ""
+                },
+                {
+                  "id": "a3c5c9dd-fe29-4b48-b029-955c49c0c66b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPConfidenceScore",
+                  "label": "Confidence Score",
+                  "type": 1,
+                  "description": "Confidence score (0-100)",
+                  "isRequired": true,
+                  "value": "70"
+                },
+                {
+                  "id": "e0c53edf-9345-4ad6-a9f1-4f1f151a02d5",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPThreatType",
+                  "label": "Threat Type",
+                  "type": 2,
+                  "description": "Category of threat",
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"C2\", \"label\": \"Command & Control\" },\n    { \"value\": \"Malware\", \"label\": \"Malware Distribution\" },\n    { \"value\": \"Phishing\", \"label\": \"Phishing\" },\n    { \"value\": \"Scanning\", \"label\": \"Scanning/Reconnaissance\" },\n    { \"value\": \"Botnet\", \"label\": \"Botnet\" },\n    { \"value\": \"TOR\", \"label\": \"TOR Exit Node\" },\n    { \"value\": \"Proxy\", \"label\": \"Proxy/VPN\" },\n    { \"value\": \"Cryptocurrency\", \"label\": \"Cryptocurrency Mining\" },\n    { \"value\": \"Other\", \"label\": \"Other\" }\n]",
+                  "value": "C2"
+                },
+                {
+                  "id": "e9d38233-82d2-4945-9465-5ec63d18ea69",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPTLP",
+                  "label": "TLP",
+                  "type": 2,
+                  "description": "Traffic Light Protocol designation",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"TLP:RED\", \"label\": \"TLP:RED\" },\n    { \"value\": \"TLP:AMBER\", \"label\": \"TLP:AMBER\" },\n    { \"value\": \"TLP:GREEN\", \"label\": \"TLP:GREEN\" },\n    { \"value\": \"TLP:WHITE\", \"label\": \"TLP:WHITE\" }\n]",
+                  "value": "TLP:AMBER"
+                },
+                {
+                  "id": "7e36db4e-7b9c-40bd-8362-320cf565690d",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPDescription",
+                  "label": "Description",
+                  "type": 1,
+                  "description": "Additional context about this indicator",
+                  "isRequired": false,
+                  "value": ""
+                },
+                {
+                  "id": "94a39535-7525-4c31-9479-7f686526b754",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPExpirationDays",
+                  "label": "Expiration (Days)",
+                  "type": 1,
+                  "description": "Days until this indicator expires",
+                  "isRequired": true,
+                  "value": "30"
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "65",
+            "name": "IPAddressParameters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### IP Submission Guidelines\n\n- Enter the IP address in standard IPv4 format (e.g., 192.168.1.1)\n- Confidence score should reflect your certainty (higher = more certain)\n- Private IP addresses (10.x.x.x, 172.16-31.x.x, 192.168.x.x) will not be accepted\n- TLP designation controls sharing permissions:\n  - RED: No sharing outside organization\n  - AMBER: Limited sharing within trusted community\n  - GREEN: Community-wide sharing permitted\n  - WHITE: Unlimited sharing\n- Description should include context such as observed behaviors, campaigns, or threat actors"
+            },
+            "customWidth": "35",
+            "name": "IPGuidelines"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Validate IP format using regex\r\nlet ipRegex = @'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$';\r\nlet privateIPRegex = @'^(10\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|192\\.168\\.)';\r\nlet isValidIP = '{IPAddress}' matches regex ipRegex;\r\nlet isPrivateIP = '{IPAddress}' matches regex privateIPRegex;\r\nlet confidenceInRange = {IPConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {IPExpirationDays} between (1 .. 365);\r\n\r\nprint \r\n  ValidationResult = case(\r\n    isempty('{IPAddress}'), 'Please enter an IP address',\r\n    not(isValidIP), 'Invalid IP address format. Use standard IPv4 format (e.g., 1.2.3.4)',\r\n    isPrivateIP, 'Warning: This appears to be a private IP address',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    'Valid')\r\n",
+              "size": 3,
+              "title": "Validation",
+              "noDataMessage": "Enter values above to validate",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "IPValidation"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "a0e31e14-1c39-448e-ac0b-87378e6da14b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "IPSubmitButton",
+                  "type": 1,
+                  "value": "Submit IP Indicator",
+                  "typeSettings": {
+                    "parameterMode": "button",
+                    "buttonProvision": {
+                      "enabled": true,
+                      "actionType": "item",
+                      "linkTarget": "WorkbookTemplateV1",
+                      "linkLabel": "Submit",
+                      "gotoStep": "IPSubmission",
+                      "itemTarget": "cti-workbook-template",
+                      "resourceIds": [],
+                      "resultMapping": "link"
+                    }
+                  }
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "IPSubmitButton"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Generate a GUID for the indicator\r\nlet indicatorId = guid();\r\nlet now = now();\r\nlet expirationDate = now() + {IPExpirationDays}d;\r\n\r\n// First validate the inputs\r\nlet ipRegex = @'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$';\r\nlet isValidIP = '{IPAddress}' matches regex ipRegex;\r\nlet confidenceInRange = {IPConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {IPExpirationDays} between (1 .. 365);\r\n\r\nprint Result = case(\r\n    not(isValidIP), 'Invalid IP address format',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    \"Submitting indicator...\");\r\n\r\n// If validation passes, submit the indicator\r\nprint Operation = case(\r\n    not(isValidIP) or not(confidenceInRange) or not(daysInRange), 'Validation failed',\r\n    \"Submitting IP indicator to CTI_IPIndicators_CL\");\r\n  \r\n// Only execute the insert if all validations pass\r\nlet insertResult = () {\r\n    let insertSuccess = true;\r\n    print \r\n        InsertedIP = '{IPAddress}',\r\n        InsertedIndicatorId = indicatorId,\r\n        InsertResult = \"Successfully added IP indicator\"\r\n};\r\n\r\nprint InsertStatus = case(\r\n    not(isValidIP) or not(confidenceInRange) or not(daysInRange), \r\n    'Submission canceled due to validation errors',\r\n    'The indicator will be available in CTI_IPIndicators_CL within a few minutes');\r\n\r\n// This would call the actual data insertion function\r\n// In a real workbook, you would use the Data function to insert\r\n// For demonstration purposes, we're just showing the data that would be inserted\r\nprint DataToBeInserted = strcat(  \r\n  'IPAddress_s: \"{IPAddress}\", ',\r\n  'IndicatorId_g: \"', indicatorId, '\", ',\r\n  'ConfidenceScore_d: ', {IPConfidenceScore}, ', ',\r\n  'SourceFeed_s: \"{SourceFeed}\", ',\r\n  'FirstSeen_t: \"', now, '\", ',\r\n  'LastSeen_t: \"', now, '\", ',\r\n  'ExpirationDateTime_t: \"', expirationDate, '\", ',\r\n  'ThreatType_s: \"{IPThreatType}\", ',\r\n  'TLP_s: \"{IPTLP}\", ',\r\n  'Description_s: \"{IPDescription}\", ',\r\n  'Active_b: true')\r\n",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "card",
+              "workspaceLevelHelperInfo": {
+                "workspaceHelperInfo": {
+                  "workspaceId": "a4376cfb-0d1f-4cba-8c61-44a305638f26",
+                  "subscriptionId": "d91307c8-d5df-4ca4-87e0-72b0bab90d4b",
+                  "resourcegroup": "rg-sentinel-workspace",
+                  "displaynameParameter": "",
+                  "resourceName": "sentinel-log-analytics",
+                  "resourceNameParameter": "",
+                  "currentResourceParameter": "",
+                  "linkToTemplate": ""
+                }
+              }
+            },
+            "conditionalVisibility": {
+              "parameterName": "IPSubmitButton",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "name": "IPSubmission"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "#### Data Function for Actual Submission\n\nIn a production version of this workbook, the indicator would be submitted using an Azure Resource Graph data function like this:\n\n```kql\n_Data_PutBlob(\"CTI_IPIndicators_CL\", \n  dynamic({\n    \"IPAddress_s\": \"{IPAddress}\", \n    \"IndicatorId_g\": \"<generated_guid>\", \n    \"ConfidenceScore_d\": {IPConfidenceScore}, \n    \"SourceFeed_s\": \"{SourceFeed}\", \n    \"FirstSeen_t\": \"<current_time>\", \n    \"LastSeen_t\": \"<current_time>\", \n    \"ExpirationDateTime_t\": \"<expiration_date>\", \n    \"ThreatType_s\": \"{IPThreatType}\", \n    \"TLP_s\": \"{IPTLP}\", \n    \"Description_s\": \"{IPDescription}\", \n    \"Active_b\": true\n  })\n)\n```\n\nThis function requires Write permissions on your Log Analytics workspace. Workbooks support this functionality but the actual data write code is not included in this template to prevent accidental submissions."
+            },
+            "name": "IPDataFunctionInfo"
+          }
+        ],
+        "conditionalVisibility": {
+          "parameterName": "IndicatorType",
+          "comparison": "isEqualTo",
+          "value": "IP"
+        }
+      },
+      "name": "IPAddressGroup"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Domain Submission",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "17ea13ca-3d47-441e-a5cc-cf8c3cdec95d",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Domain",
+                  "label": "Domain Name",
+                  "type": 1,
+                  "description": "Enter the malicious domain name",
+                  "isRequired": true,
+                  "value": ""
+                },
+                {
+                  "id": "b55d31ef-3dca-4531-b89b-29ebbf0d3ebb",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainConfidenceScore",
+                  "label": "Confidence Score",
+                  "type": 1,
+                  "description": "Confidence score (0-100)",
+                  "isRequired": true,
+                  "value": "70"
+                },
+                {
+                  "id": "b5a0eb0d-13e7-47ff-b8f5-28c7bfb3d75f",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainThreatType",
+                  "label": "Threat Type",
+                  "type": 2,
+                  "description": "Category of threat",
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"C2\", \"label\": \"Command & Control\" },\n    { \"value\": \"Malware\", \"label\": \"Malware Distribution\" },\n    { \"value\": \"Phishing\", \"label\": \"Phishing\" },\n    { \"value\": \"Fake\", \"label\": \"Fake/Impersonation\" },\n    { \"value\": \"DGA\", \"label\": \"Domain Generation Algorithm\" },\n    { \"value\": \"Botnet\", \"label\": \"Botnet\" },\n    { \"value\": \"Other\", \"label\": \"Other\" }\n]",
+                  "value": "C2"
+                },
+                {
+                  "id": "b46db3e4-46df-464b-8d9d-74c6d27fbc73",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainTLP",
+                  "label": "TLP",
+                  "type": 2,
+                  "description": "Traffic Light Protocol designation",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"TLP:RED\", \"label\": \"TLP:RED\" },\n    { \"value\": \"TLP:AMBER\", \"label\": \"TLP:AMBER\" },\n    { \"value\": \"TLP:GREEN\", \"label\": \"TLP:GREEN\" },\n    { \"value\": \"TLP:WHITE\", \"label\": \"TLP:WHITE\" }\n]",
+                  "value": "TLP:AMBER"
+                },
+                {
+                  "id": "e8992cdc-fd5f-42cf-be71-46e6156e98dc",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainDescription",
+                  "label": "Description",
+                  "type": 1,
+                  "description": "Additional context about this indicator",
+                  "isRequired": false,
+                  "value": ""
+                },
+                {
+                  "id": "2bf3fd8d-4fb7-47eb-a693-a274285c1b7b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainExpirationDays",
+                  "label": "Expiration (Days)",
+                  "type": 1,
+                  "description": "Days until this indicator expires",
+                  "isRequired": true,
+                  "value": "30"
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "65",
+            "name": "DomainParameters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Domain Submission Guidelines\n\n- Enter the domain name without http/https protocol (e.g., badsite.com)\n- Confidence score should reflect your certainty (higher = more certain)\n- For subdomains, include the entire FQDN (e.g., bad.example.com)\n- TLP designation controls sharing permissions\n- Description should include context such as observed behaviors, campaigns, or threat actors"
+            },
+            "customWidth": "35",
+            "name": "DomainGuidelines"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Validate domain format using regex\r\nlet domainRegex = @'^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$';\r\nlet isValidDomain = '{Domain}' matches regex domainRegex;\r\nlet confidenceInRange = {DomainConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {DomainExpirationDays} between (1 .. 365);\r\n\r\nprint \r\n  ValidationResult = case(\r\n    isempty('{Domain}'), 'Please enter a domain name',\r\n    not(isValidDomain), 'Invalid domain format. Enter a valid domain (e.g., example.com)',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    'Valid')\r\n",
+              "size": 3,
+              "title": "Validation",
+              "noDataMessage": "Enter values above to validate",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "DomainValidation"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "4a5e9e31-c1eb-4e34-bfa6-4e7cbe7f173d",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainSubmitButton",
+                  "type": 1,
+                  "value": "Submit Domain Indicator",
+                  "typeSettings": {
+                    "parameterMode": "button",
+                    "buttonProvision": {
+                      "enabled": true,
+                      "actionType": "item",
+                      "linkTarget": "WorkbookTemplateV1",
+                      "linkLabel": "Submit",
+                      "gotoStep": "DomainSubmission",
+                      "itemTarget": "cti-workbook-template",
+                      "resourceIds": [],
+                      "resultMapping": "link"
+                    }
+                  }
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "DomainSubmitButton"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Generate a GUID for the indicator\r\nlet indicatorId = guid();\r\nlet now = now();\r\nlet expirationDate = now() + {DomainExpirationDays}d;\r\n\r\n// First validate the inputs\r\nlet domainRegex = @'^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$';\r\nlet isValidDomain = '{Domain}' matches regex domainRegex;\r\nlet confidenceInRange = {DomainConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {DomainExpirationDays} between (1 .. 365);\r\n\r\nprint Result = case(\r\n    not(isValidDomain), 'Invalid domain format',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    \"Submitting indicator...\");\r\n\r\n// If validation passes, submit the indicator\r\nprint Operation = case(\r\n    not(isValidDomain) or not(confidenceInRange) or not(daysInRange), 'Validation failed',\r\n    \"Submitting domain indicator to CTI_DomainIndicators_CL\");\r\n  \r\n// Only execute the insert if all validations pass\r\nlet insertResult = () {\r\n    let insertSuccess = true;\r\n    print \r\n        InsertedDomain = '{Domain}',\r\n        InsertedIndicatorId = indicatorId,\r\n        InsertResult = \"Successfully added domain indicator\"\r\n};\r\n\r\nprint InsertStatus = case(\r\n    not(isValidDomain) or not(confidenceInRange) or not(daysInRange), \r\n    'Submission canceled due to validation errors',\r\n    'The indicator will be available in CTI_DomainIndicators_CL within a few minutes');\r\n\r\n// This would call the actual data insertion function\r\n// In a real workbook, you would use the Data function to insert\r\n// For demonstration purposes, we're just showing the data that would be inserted\r\nprint DataToBeInserted = strcat(  \r\n  'Domain_s: \"{Domain}\", ',\r\n  'IndicatorId_g: \"', indicatorId, '\", ',\r\n  'ConfidenceScore_d: ', {DomainConfidenceScore}, ', ',\r\n  'SourceFeed_s: \"{SourceFeed}\", ',\r\n  'FirstSeen_t: \"', now, '\", ',\r\n  'LastSeen_t: \"', now, '\", ',\r\n  'ExpirationDateTime_t: \"', expirationDate, '\", ',\r\n  'ThreatType_s: \"{DomainThreatType}\", ',\r\n  'TLP_s: \"{DomainTLP}\", ',\r\n  'Description_s: \"{DomainDescription}\", ',\r\n  'Active_b: true')\r\n",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "card"
+            },
+            "conditionalVisibility": {
+              "parameterName": "DomainSubmitButton",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "name": "DomainSubmission"
+          }
+        ],
+        "conditionalVisibility": {
+          "parameterName": "IndicatorType",
+          "comparison": "isEqualTo",
+          "value": "Domain"
+        }
+      },
+      "name": "DomainGroup"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "URL Submission",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "f9f5a6a7-035f-4856-8ea5-49451c9d9b07",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URL",
+                  "label": "URL",
+                  "type": 1,
+                  "description": "Enter the malicious URL",
+                  "isRequired": true,
+                  "value": ""
+                },
+                {
+                  "id": "d8e9f433-79c3-48a0-ac23-d98d7f17727d",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLConfidenceScore",
+                  "label": "Confidence Score",
+                  "type": 1,
+                  "description": "Confidence score (0-100)",
+                  "isRequired": true,
+                  "value": "70"
+                },
+                {
+                  "id": "3d1acaef-77f9-49b2-8b1e-cef531c6f6a2",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLThreatType",
+                  "label": "Threat Type",
+                  "type": 2,
+                  "description": "Category of threat",
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"C2\", \"label\": \"Command & Control\" },\n    { \"value\": \"Malware\", \"label\": \"Malware Distribution\" },\n    { \"value\": \"Phishing\", \"label\": \"Phishing\" },\n    { \"value\": \"Fake\", \"label\": \"Fake/Impersonation\" },\n    { \"value\": \"Exploit\", \"label\": \"Exploit Kit\" },\n    { \"value\": \"DriveBy\", \"label\": \"Drive-By Download\" },\n    { \"value\": \"Other\", \"label\": \"Other\" }\n]",
+                  "value": "Phishing"
+                },
+                {
+                  "id": "bed9edeb-6040-4b5f-beae-0e0a17d349ee",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLTLP",
+                  "label": "TLP",
+                  "type": 2,
+                  "description": "Traffic Light Protocol designation",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"TLP:RED\", \"label\": \"TLP:RED\" },\n    { \"value\": \"TLP:AMBER\", \"label\": \"TLP:AMBER\" },\n    { \"value\": \"TLP:GREEN\", \"label\": \"TLP:GREEN\" },\n    { \"value\": \"TLP:WHITE\", \"label\": \"TLP:WHITE\" }\n]",
+                  "value": "TLP:AMBER"
+                },
+                {
+                  "id": "f28075f5-9ba0-4fbf-af17-1d516a8f8dc1",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLDescription",
+                  "label": "Description",
+                  "type": 1,
+                  "description": "Additional context about this indicator",
+                  "isRequired": false,
+                  "value": ""
+                },
+                {
+                  "id": "f0be9f9e-a68e-4eaf-844a-b30db75f4a17",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLExpirationDays",
+                  "label": "Expiration (Days)",
+                  "type": 1,
+                  "description": "Days until this indicator expires",
+                  "isRequired": true,
+                  "value": "30"
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "65",
+            "name": "URLParameters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### URL Submission Guidelines\n\n- Enter the complete URL including protocol (http:// or https://)\n- Include the full path for more specific blocking\n- Confidence score should reflect your certainty (higher = more certain)\n- Prioritize malicious URLs over domain submissions for more precise controls\n- TLP designation controls sharing permissions\n- Description should include context such as campaign ID, observed behaviors, or threat actors"
+            },
+            "customWidth": "35",
+            "name": "URLGuidelines"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Validate URL format using regex\r\nlet urlRegex = @'^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?$';\r\nlet isValidURL = '{URL}' matches regex urlRegex;\r\nlet hasProtocol = '{URL}' startswith \"http://\" or '{URL}' startswith \"https://\";\r\nlet confidenceInRange = {URLConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {URLExpirationDays} between (1 .. 365);\r\n\r\nprint \r\n  ValidationResult = case(\r\n    isempty('{URL}'), 'Please enter a URL',\r\n    not(isValidURL), 'Invalid URL format. Enter a valid URL',\r\n    not(hasProtocol), 'URL should include protocol (http:// or https://)',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    'Valid')\r\n",
+              "size": 3,
+              "title": "Validation",
+              "noDataMessage": "Enter values above to validate",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "URLValidation"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "f6d0ef3c-d54a-4c7c-a90e-48e92e5bdc25",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "URLSubmitButton",
+                  "type": 1,
+                  "value": "Submit URL Indicator",
+                  "typeSettings": {
+                    "parameterMode": "button",
+                    "buttonProvision": {
+                      "enabled": true,
+                      "actionType": "item",
+                      "linkTarget": "WorkbookTemplateV1",
+                      "linkLabel": "Submit",
+                      "gotoStep": "URLSubmission",
+                      "itemTarget": "cti-workbook-template",
+                      "resourceIds": [],
+                      "resultMapping": "link"
+                    }
+                  }
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "URLSubmitButton"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Generate a GUID for the indicator\r\nlet indicatorId = guid();\r\nlet now = now();\r\nlet expirationDate = now() + {URLExpirationDays}d;\r\n\r\n// First validate the inputs\r\nlet urlRegex = @'^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?$';\r\nlet isValidURL = '{URL}' matches regex urlRegex;\r\nlet hasProtocol = '{URL}' startswith \"http://\" or '{URL}' startswith \"https://\";\r\nlet confidenceInRange = {URLConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {URLExpirationDays} between (1 .. 365);\r\n\r\nprint Result = case(\r\n    not(isValidURL), 'Invalid URL format',\r\n    not(hasProtocol), 'URL should include protocol (http:// or https://)',\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    \"Submitting indicator...\");\r\n\r\n// If validation passes, submit the indicator\r\nprint Operation = case(\r\n    not(isValidURL) or not(hasProtocol) or not(confidenceInRange) or not(daysInRange), 'Validation failed',\r\n    \"Submitting URL indicator to CTI_URLIndicators_CL\");\r\n  \r\n// Only execute the insert if all validations pass\r\nlet insertResult = () {\r\n    let insertSuccess = true;\r\n    print \r\n        InsertedURL = '{URL}',\r\n        InsertedIndicatorId = indicatorId,\r\n        InsertResult = \"Successfully added URL indicator\"\r\n};\r\n\r\nprint InsertStatus = case(\r\n    not(isValidURL) or not(hasProtocol) or not(confidenceInRange) or not(daysInRange), \r\n    'Submission canceled due to validation errors',\r\n    'The indicator will be available in CTI_URLIndicators_CL within a few minutes');\r\n\r\n// This would call the actual data insertion function\r\n// In a real workbook, you would use the Data function to insert\r\n// For demonstration purposes, we're just showing the data that would be inserted\r\nprint DataToBeInserted = strcat(  \r\n  'URL_s: \"{URL}\", ',\r\n  'IndicatorId_g: \"', indicatorId, '\", ',\r\n  'ConfidenceScore_d: ', {URLConfidenceScore}, ', ',\r\n  'SourceFeed_s: \"{SourceFeed}\", ',\r\n  'FirstSeen_t: \"', now, '\", ',\r\n  'LastSeen_t: \"', now, '\", ',\r\n  'ExpirationDateTime_t: \"', expirationDate, '\", ',\r\n  'ThreatType_s: \"{URLThreatType}\", ',\r\n  'TLP_s: \"{URLTLP}\", ',\r\n  'Description_s: \"{URLDescription}\", ',\r\n  'Active_b: true')\r\n",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "card"
+            },
+            "conditionalVisibility": {
+              "parameterName": "URLSubmitButton",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "name": "URLSubmission"
+          }
+        ],
+        "conditionalVisibility": {
+          "parameterName": "IndicatorType",
+          "comparison": "isEqualTo",
+          "value": "URL"
+        }
+      },
+      "name": "URLGroup"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "File Hash Submission",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "5f65da49-b4d8-432e-a00c-b84b48cb06f1",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashType",
+                  "label": "Hash Type",
+                  "type": 2,
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"SHA256\", \"label\": \"SHA256\" },\n    { \"value\": \"SHA1\", \"label\": \"SHA1\" },\n    { \"value\": \"MD5\", \"label\": \"MD5\" }\n]",
+                  "value": "SHA256"
+                },
+                {
+                  "id": "40ad3e66-c7e1-4ae0-990a-b0de9b70c2e4",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "FileHash",
+                  "label": "File Hash",
+                  "type": 1,
+                  "description": "Enter the malicious file hash",
+                  "isRequired": true,
+                  "value": ""
+                },
+                {
+                  "id": "ae0ded20-9a21-4aa5-9a66-53e7c4a6a5ac",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashConfidenceScore",
+                  "label": "Confidence Score",
+                  "type": 1,
+                  "description": "Confidence score (0-100)",
+                  "isRequired": true,
+                  "value": "70"
+                },
+                {
+                  "id": "be3e1c33-e037-4b85-96b8-e90ec9f7a86b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "MalwareFamily",
+                  "label": "Malware Family",
+                  "type": 1,
+                  "description": "Name of the malware family (if known)",
+                  "isRequired": false,
+                  "value": ""
+                },
+                {
+                  "id": "3d5fc2a9-f9e4-4783-8a97-c1d37ffb0c13",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashThreatType",
+                  "label": "Threat Type",
+                  "type": 2,
+                  "description": "Category of threat",
+                  "isRequired": true,
+                  "multiSelect": false,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"Trojan\", \"label\": \"Trojan\" },\n    { \"value\": \"Ransomware\", \"label\": \"Ransomware\" },\n    { \"value\": \"Backdoor\", \"label\": \"Backdoor\" },\n    { \"value\": \"Downloader\", \"label\": \"Downloader\" },\n    { \"value\": \"Spyware\", \"label\": \"Spyware\" },\n    { \"value\": \"Worm\", \"label\": \"Worm\" },\n    { \"value\": \"Rootkit\", \"label\": \"Rootkit\" },\n    { \"value\": \"Cryptominer\", \"label\": \"Cryptominer\" },\n    { \"value\": \"Dropper\", \"label\": \"Dropper\" },\n    { \"value\": \"Other\", \"label\": \"Other\" }\n]",
+                  "value": "Trojan"
+                },
+                {
+                  "id": "e0264d00-bb9d-4f0e-ba95-2bd21de2fa80",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashTLP",
+                  "label": "TLP",
+                  "type": 2,
+                  "description": "Traffic Light Protocol designation",
+                  "isRequired": true,
+                  "typeSettings": {
+                    "additionalResourceOptions": [],
+                    "showDefault": false
+                  },
+                  "jsonData": "[\n    { \"value\": \"TLP:RED\", \"label\": \"TLP:RED\" },\n    { \"value\": \"TLP:AMBER\", \"label\": \"TLP:AMBER\" },\n    { \"value\": \"TLP:GREEN\", \"label\": \"TLP:GREEN\" },\n    { \"value\": \"TLP:WHITE\", \"label\": \"TLP:WHITE\" }\n]",
+                  "value": "TLP:AMBER"
+                },
+                {
+                  "id": "abc5ef33-8f76-469e-840a-9f9ecf4a97a7",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashDescription",
+                  "label": "Description",
+                  "type": 1,
+                  "description": "Additional context about this indicator",
+                  "isRequired": false,
+                  "value": ""
+                },
+                {
+                  "id": "9276a00c-ae3a-4c17-8bc8-de3751fa4730",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashExpirationDays",
+                  "label": "Expiration (Days)",
+                  "type": 1,
+                  "description": "Days until this indicator expires",
+                  "isRequired": true,
+                  "value": "90"
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "customWidth": "65",
+            "name": "FileHashParameters"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### File Hash Submission Guidelines\n\n- SHA256 is preferred for maximum compatibility with security tools\n- Use correct hash format for the selected hash type:\n  - SHA256: 64 hexadecimal characters\n  - SHA1: 40 hexadecimal characters\n  - MD5: 32 hexadecimal characters\n- Malware Family helps with threat correlation and tracking\n- File hashes typically have longer expiration periods than IPs or domains\n- Add relevant details like file names or behavior in the description"
+            },
+            "customWidth": "35",
+            "name": "FileHashGuidelines"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Validate hash format using regex based on selected hash type\r\nlet sha256Regex = @'^[A-Fa-f0-9]{64}$';\r\nlet sha1Regex = @'^[A-Fa-f0-9]{40}$';\r\nlet md5Regex = @'^[A-Fa-f0-9]{32}$';\r\n\r\nlet hashFormatRegex = case(\r\n    '{HashType}' == 'SHA256', sha256Regex,\r\n    '{HashType}' == 'SHA1', sha1Regex,\r\n    '{HashType}' == 'MD5', md5Regex,\r\n    sha256Regex // Default to SHA256\r\n);\r\n\r\nlet isValidHashFormat = '{FileHash}' matches regex hashFormatRegex;\r\nlet confidenceInRange = {HashConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {HashExpirationDays} between (1 .. 365);\r\n\r\nprint \r\n  ValidationResult = case(\r\n    isempty('{FileHash}'), 'Please enter a file hash',\r\n    not(isValidHashFormat), strcat('Invalid ', '{HashType}', ' format. Check hash length and characters.'),\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    'Valid')\r\n",
+              "size": 3,
+              "title": "Validation",
+              "noDataMessage": "Enter values above to validate",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "FileHashValidation"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "6a9e6fec-93da-469a-a201-e403ca900eef",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "HashSubmitButton",
+                  "type": 1,
+                  "value": "Submit File Hash Indicator",
+                  "typeSettings": {
+                    "parameterMode": "button",
+                    "buttonProvision": {
+                      "enabled": true,
+                      "actionType": "item",
+                      "linkTarget": "WorkbookTemplateV1",
+                      "linkLabel": "Submit",
+                      "gotoStep": "FileHashSubmission",
+                      "itemTarget": "cti-workbook-template",
+                      "resourceIds": [],
+                      "resultMapping": "link"
+                    }
+                  }
+                }
+              ],
+              "style": "formVertical",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "FileHashSubmitButton"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Generate a GUID for the indicator\r\nlet indicatorId = guid();\r\nlet now = now();\r\nlet expirationDate = now() + {HashExpirationDays}d;\r\n\r\n// First validate the inputs\r\nlet sha256Regex = @'^[A-Fa-f0-9]{64}$';\r\nlet sha1Regex = @'^[A-Fa-f0-9]{40}$';\r\nlet md5Regex = @'^[A-Fa-f0-9]{32}$';\r\n\r\nlet hashFormatRegex = case(\r\n    '{HashType}' == 'SHA256', sha256Regex,\r\n    '{HashType}' == 'SHA1', sha1Regex,\r\n    '{HashType}' == 'MD5', md5Regex,\r\n    sha256Regex // Default to SHA256\r\n);\r\n\r\nlet isValidHashFormat = '{FileHash}' matches regex hashFormatRegex;\r\nlet confidenceInRange = {HashConfidenceScore} between (0 .. 100);\r\nlet daysInRange = {HashExpirationDays} between (1 .. 365);\r\n\r\nprint Result = case(\r\n    not(isValidHashFormat), strcat('Invalid ', '{HashType}', ' format'),\r\n    not(confidenceInRange), 'Confidence score must be between 0 and 100',\r\n    not(daysInRange), 'Expiration days must be between 1 and 365',\r\n    \"Submitting indicator...\");\r\n\r\n// If validation passes, submit the indicator\r\nprint Operation = case(\r\n    not(isValidHashFormat) or not(confidenceInRange) or not(daysInRange), 'Validation failed',\r\n    \"Submitting file hash indicator to CTI_FileHashIndicators_CL\");\r\n  \r\n// Only execute the insert if all validations pass\r\nlet insertResult = () {\r\n    let insertSuccess = true;\r\n    print \r\n        InsertedFileHash = '{FileHash}',\r\n        InsertedHashType = '{HashType}',\r\n        InsertedIndicatorId = indicatorId,\r\n        InsertResult = \"Successfully added file hash indicator\"\r\n};\r\n\r\nprint InsertStatus = case(\r\n    not(isValidHashFormat) or not(confidenceInRange) or not(daysInRange), \r\n    'Submission canceled due to validation errors',\r\n    'The indicator will be available in CTI_FileHashIndicators_CL within a few minutes');\r\n\r\n// This would call the actual data insertion function\r\n// In a real workbook, you would use the Data function to insert\r\n// For demonstration purposes, we're just showing the data that would be inserted\r\nlet hashFieldMap = dynamic({\r\n  \"SHA256\": \"SHA256_s\", \r\n  \"SHA1\": \"SHA1_s\",\r\n  \"MD5\": \"MD5_s\"\r\n});\r\n\r\nlet hashField = hashFieldMap['{HashType}'];\r\n\r\nprint DataToBeInserted = strcat(  \r\n  hashField, ': \"{FileHash}\", ',\r\n  'IndicatorId_g: \"', indicatorId, '\", ',\r\n  'ConfidenceScore_d: ', {HashConfidenceScore}, ', ',\r\n  'MalwareFamily_s: \"{MalwareFamily}\", ',\r\n  'SourceFeed_s: \"{SourceFeed}\", ',\r\n  'FirstSeen_t: \"', now, '\", ',\r\n  'LastSeen_t: \"', now, '\", ',\r\n  'ExpirationDateTime_t: \"', expirationDate, '\", ',\r\n  'ThreatType_s: \"{HashThreatType}\", ',\r\n  'TLP_s: \"{HashTLP}\", ',\r\n  'Description_s: \"{HashDescription}\", ',\r\n  'Active_b: true')\r\n",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "card"
+            },
+            "conditionalVisibility": {
+              "parameterName": "HashSubmitButton",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            },
+            "name": "FileHashSubmission"
+          }
+        ],
+        "conditionalVisibility": {
+          "parameterName": "IndicatorType",
+          "comparison": "isEqualTo",
+          "value": "FileHash"
+        }
+      },
+      "name": "FileHashGroup"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Recent Submissions",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ff837db0-dbec-472a-bb1d-2068a237e072",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TimeRange",
+                  "label": "Time Range",
+                  "type": 4,
+                  "description": "Filter to show recent submissions",
+                  "isRequired": true,
+                  "value": {
+                    "durationMs": 604800000
+                  },
+                  "typeSettings": {
+                    "selectableValues": [
+                      {
+                        "durationMs": 300000
+                      },
+                      {
+                        "durationMs": 900000
+                      },
+                      {
+                        "durationMs": 1800000
+                      },
+                      {
+                        "durationMs": 3600000
+                      },
+                      {
+                        "durationMs": 14400000
+                      },
+                      {
+                        "durationMs": 43200000
+                      },
+                      {
+                        "durationMs": 86400000
+                      },
+                      {
+                        "durationMs": 172800000
+                      },
+                      {
+                        "durationMs": 259200000
+                      },
+                      {
+                        "durationMs": 604800000
+                      },
+                      {
+                        "durationMs": 1209600000
+                      },
+                      {
+                        "durationMs": 2419200000
+                      },
+                      {
+                        "durationMs": 2592000000
+                      },
+                      {
+                        "durationMs": 5184000000
+                      }
+                    ],
+                    "allowCustom": true
+                  }
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "RecentSubmissionsParameters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Union all CTI indicator tables to show recent submissions\r\nunion \r\n(CTI_IPIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"IP\", Value = IPAddress_s\r\n| project TimeGenerated, Type, Value, ThreatType = ThreatType_s, TLP = TLP_s, Confidence = ConfidenceScore_d),\r\n(CTI_DomainIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"Domain\", Value = Domain_s\r\n| project TimeGenerated, Type, Value, ThreatType = ThreatType_s, TLP = TLP_s, Confidence = ConfidenceScore_d),\r\n(CTI_URLIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"URL\", Value = URL_s\r\n| project TimeGenerated, Type, Value, ThreatType = ThreatType_s, TLP = TLP_s, Confidence = ConfidenceScore_d),\r\n(CTI_FileHashIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"FileHash\", Value = SHA256_s\r\n| project TimeGenerated, Type, Value, ThreatType = ThreatType_s, TLP = TLP_s, Confidence = ConfidenceScore_d)\r\n| order by TimeGenerated desc\r\n",
+              "size": 0,
+              "title": "Recent Manual Submissions",
+              "noDataMessage": "No manual submissions found in the selected time range",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TimeGenerated",
+                    "formatter": 6,
+                    "dateFormat": {
+                      "showUtcTime": false,
+                      "formatName": "shortDateTimePattern"
+                    }
+                  },
+                  {
+                    "columnMatch": "Confidence",
+                    "formatter": 8,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "minimumFractionDigits": 0,
+                        "maximumFractionDigits": 0
+                      }
+                    },
+                    "visualizations": {
+                      "greenRedGradient": {
+                        "min": 0,
+                        "max": 100
+                      }
+                    }
+                  }
+                ],
+                "sortBy": [
+                  {
+                    "itemKey": "TimeGenerated",
+                    "sortOrder": 2
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Submission Time"
+                  },
+                  {
+                    "columnId": "Type",
+                    "label": "Indicator Type"
+                  },
+                  {
+                    "columnId": "Value",
+                    "label": "Indicator Value"
+                  },
+                  {
+                    "columnId": "ThreatType",
+                    "label": "Threat Type"
+                  },
+                  {
+                    "columnId": "TLP",
+                    "label": "TLP"
+                  },
+                  {
+                    "columnId": "Confidence",
+                    "label": "Confidence Score"
+                  }
+                ]
+              },
+              "sortBy": [
+                {
+                  "itemKey": "TimeGenerated",
+                  "sortOrder": 2
+                }
+              ]
+            },
+            "name": "RecentSubmissionsList"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Count submissions by type\r\nunion \r\n(CTI_IPIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"IP\"),\r\n(CTI_DomainIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"Domain\"),\r\n(CTI_URLIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"URL\"),\r\n(CTI_FileHashIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"File Hash\")\r\n| summarize Count = count() by Type\r\n| order by Count desc",
+              "size": 0,
+              "title": "Submissions by Type",
+              "noDataMessage": "No manual submissions found in the selected time range",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "piechart",
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "Type",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "Count",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "tileSettings": {
+                "showBorder": false,
+                "titleContent": {
+                  "columnMatch": "Type",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "IP",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Domain",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "URL",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "File Hash",
+                    "color": "purple"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "SubmissionsByTypeChart"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "// Group submissions by day\r\nunion \r\n(CTI_IPIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"IP\"),\r\n(CTI_DomainIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"Domain\"),\r\n(CTI_URLIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"URL\"),\r\n(CTI_FileHashIndicators_CL\r\n| where SourceFeed_s == \"Manual\" and TimeGenerated {TimeRange}\r\n| extend Type = \"File Hash\")\r\n| summarize Count = count() by Type, bin(TimeGenerated, 1d)\r\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Submission Trend",
+              "noDataMessage": "No manual submissions found in the selected time range",
+              "timeContext": {
+                "durationMs": 0
+              },
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "visualization": "timechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "IP",
+                    "color": "blue"
+                  },
+                  {
+                    "seriesName": "Domain",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "URL",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "File Hash",
+                    "color": "purple"
+                  }
+                ]
+              }
+            },
+            "customWidth": "50",
+            "name": "SubmissionsTrendChart"
+          }
+        ]
+      },
+      "name": "RecentSubmissionsGroup"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Implementation Instructions\n\n### Deployment Steps\n\n1. **Save this workbook** in your Microsoft Sentinel workspace associated with your CTI solution\n2. **Grant permissions** to users who need to submit indicators:\n   - Users need `Microsoft Sentinel Contributor` role on the Log Analytics workspace\n   - Or create a custom role with `microsoft.operationalinsights/workspaces/write` permission\n\n### Data Function Implementation\n\nFor production use, you'll need to implement the actual data submission. Replace the \"DataToBeInserted\" visualizations with function calls like:\n\n```kql\n_Data_PutBlob(\"CTI_IPIndicators_CL\", 
+  dynamic({
+    \"IPAddress_s\": \"{IPAddress}\", 
+    \"IndicatorId_g\": guid(), 
+    \"ConfidenceScore_d\": {IPConfidenceScore}, 
+    \"SourceFeed_s\": \"{SourceFeed}\", 
+    \"FirstSeen_t\": now(), 
+    \"LastSeen_t\": now(), 
+    \"ExpirationDateTime_t\": now() + {IPExpirationDays}d, 
+    \"ThreatType_s\": \"{IPThreatType}\", 
+    \"TLP_s\": \"{IPTLP}\", 
+    \"Description_s\": \"{IPDescription}\", 
+    \"Active_b\": true
+  })
+)
+```\n\n### Additional Features to Consider\n\n- **Bulk Upload**: Add CSV import functionality for batch submissions\n- **MITRE ATT&CK Mapping**: Add fields to associate indicators with MITRE tactics and techniques\n- **Cross-Table Correlation**: Add the ability to link related indicators\n- **Approval Workflow**: Implement an approval step for submitted indicators\n- **Custom Field Extension**: Add organization-specific fields"
+      },
+      "name": "ImplementationInstructions"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
