@@ -1,4 +1,18 @@
-# Central Threat Intelligence (CTI) Solution - Implementation Guide
+# Central Threat Intelligence (CTI) Solution
+
+## Quick Start
+
+Deploy the CTI solution directly in Azure Cloud Shell:
+
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash
+```
+
+For a customized deployment with specific parameters:
+
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
+```
 
 ## Solution Overview
 
@@ -7,9 +21,9 @@ The Central Threat Intelligence (CTI) solution creates a unified platform for co
 ## Architecture Components
 
 1. **Central Log Analytics Workspace**: Dedicated repository for all threat intelligence data
-2. **Custom Data Tables**: Specialized schema for different IOC types
-3. **Automated Logic Apps**: Workflow automation for IOC distribution
-4. **Microsoft Sentinel Integration**: Analytics and cross-workspace hunting 
+2. **Custom Data Tables**: Specialized schema for different IOC types (IP, Domain, URL, FileHash)
+3. **Automated Logic Apps**: Workflow automation for IOC distribution and management
+4. **Microsoft Sentinel Integration**: Analytics rules and cross-workspace hunting 
 5. **Microsoft Defender XDR Integration**: Direct indicator submission and alerting
 6. **Unified Security Operations Portal**: Integration with Microsoft's security platform
 
@@ -17,7 +31,7 @@ The Central Threat Intelligence (CTI) solution creates a unified platform for co
 
 Before deploying the solution, ensure you have:
 
-1. **Azure Subscription**: Active subscription with contributor permissions
+1. **Azure Subscription**: Active subscription with Contributor permissions
 2. **Microsoft 365 E3/E5 License**: Provides access to Microsoft Defender and Exchange Online
 3. **Microsoft Sentinel License**: If enabling the Sentinel integration
 4. **Microsoft Defender XDR License**: For XDR integration features
@@ -33,135 +47,82 @@ Register an application in Microsoft Entra ID with the following permissions:
 | Microsoft Graph | Application | IdentityRiskyUser.ReadWrite.All, Policy.ReadWrite.ConditionalAccess |
 | Office 365 Exchange Online | Application | ThreatIntelligence.Read.All |
 
-## Deployment Instructions
+## Deployment Options
 
-### Step 1: Prepare Your Environment
+### Option 1: Azure Cloud Shell Deployment (Recommended)
+
+1. Open [Azure Cloud Shell](https://shell.azure.com/)
+2. Ensure you're in Bash mode (not PowerShell)
+3. Run the deployment command:
+
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash
+```
+
+### Option 2: Manual Deployment
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/CentralThreatIntelligence.git
+   git clone https://github.com/DataGuys/CentralThreatIntelligence.git
    cd CentralThreatIntelligence
    ```
 
-2. **Create the necessary directories**:
-   ```bash
-   mkdir -p workbooks
-   ```
-
-3. **Create the workbook files**:
-   ```bash
-   # The deploy.sh script will handle this automatically
-   ```
-
-### Step 2: Configure Deployment Parameters
-
-1. **Create a parameters file** (optional):
-   Create a `parameters.json` file to customize your deployment:
-
-   ```json
-   {
-     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
-     "contentVersion": "1.0.0.0",
-     "parameters": {
-       "location": {
-         "value": "eastus"
-       },
-       "ctiWorkspaceName": {
-         "value": "CTI-Workspace"
-       },
-       "ctiWorkspaceRetentionInDays": {
-         "value": 90
-       },
-       "ctiWorkspaceDailyQuotaGb": {
-         "value": 5
-       },
-       "enableSentinelIntegration": {
-         "value": true
-       },
-       "enableMDTI": {
-         "value": true
-       },
-       "appClientId": {
-         "value": "00000000-0000-0000-0000-000000000000"
-       },
-       "tenantId": {
-         "value": "00000000-0000-0000-0000-000000000000"
-       }
-     }
-   }
-   ```
-
-2. **Update the deploy.sh script** (if necessary):
-   Review and modify the configuration variables in the deploy.sh script.
-
-### Step 3: Deploy the Solution
-
-1. **Run the deployment script**:
+2. **Run the deployment script**:
    ```bash
    chmod +x deploy.sh
    ./deploy.sh
    ```
 
-   Alternatively, deploy directly with Azure CLI:
-   ```bash
-   az group create --name CTI-ResourceGroup --location eastus
-   az deployment group create --resource-group CTI-ResourceGroup --template-file main.bicep --parameters parameters.json
-   ```
+### Option 3: Customized Deployment
 
-2. **Store client secret in Key Vault**:
-   After deployment, manually add your application's client secret to the Key Vault:
-   ```bash
-   az keyvault secret set --vault-name kv-cti-secrets --name clientSecret --value "YOUR_CLIENT_SECRET"
-   ```
+For a customized deployment with specific parameters:
 
-### Step 4: Post-Deployment Configuration
+```bash
+./deploy.sh --resource-group "CTI-ResourceGroup" \
+  --location "eastus" \
+  --workspace-name "CTI-Workspace" \
+  --client-id "00000000-0000-0000-0000-000000000000" \
+  --tenant-id "00000000-0000-0000-0000-000000000000"
+```
 
-1. **Configure TAXII Feeds**:
-   - Navigate to the CTI-TAXII2-Connector Logic App in the Azure Portal
-   - Add your TAXII server details to the Logic App
-   - Use the `CTI_IntelligenceFeeds_CL` table to store feed metadata
+## Post-Deployment Configuration
 
-2. **Configure Access Permissions**:
-   - Grant the managed identity the appropriate permissions on target systems
-   - Set up RBAC on the CTI workspace for security analysts
+### 1. Configure TAXII Feeds
 
-## Integrating Threat Intelligence Sources
+- Navigate to the CTI-TAXII2-Connector Logic App in the Azure Portal
+- Add your TAXII server details to the Logic App
+- Use the `CTI_IntelligenceFeeds_CL` table to store feed metadata
 
-### 1. TAXII Feeds
+Example feed metadata:
 
-To add a TAXII feed:
+```kql
+let FeedData = datatable(
+    FeedId_g:string,
+    FeedName_s:string,
+    FeedType_s:string,
+    FeedURL_s:string,
+    CollectionId_s:string,
+    EncodedCredentials_s:string,
+    Description_s:string,
+    Category_s:string,
+    TLP_s:string,
+    ConfidenceScore_d:double
+)
+[
+    "00000000-0000-0000-0000-000000000000",
+    "MISP Community Feed",
+    "TAXII",
+    "https://taxii.example.org",
+    "collection-id",
+    "base64_encoded_credentials",
+    "MISP Community TAXII Feed",
+    "Community",
+    "TLP:AMBER",
+    70
+];
 
-1. Insert feed metadata into the `CTI_IntelligenceFeeds_CL` table:
-   ```kql
-   let FeedData = datatable(
-       FeedId_g:string,
-       FeedName_s:string,
-       FeedType_s:string,
-       FeedURL_s:string,
-       CollectionId_s:string,
-       EncodedCredentials_s:string,
-       Description_s:string,
-       Category_s:string,
-       TLP_s:string,
-       ConfidenceScore_d:double
-   )
-   [
-       "00000000-0000-0000-0000-000000000000",
-       "MISP Community Feed",
-       "TAXII",
-       "https://taxii.example.org",
-       "collection-id",
-       "base64_encoded_credentials",
-       "MISP Community TAXII Feed",
-       "Community",
-       "TLP:AMBER",
-       70
-   ];
-   
-   FeedData
-   ```
-
-2. The TAXII connector Logic App runs every 6 hours to automatically ingest from configured feeds.
+FeedData
+```
 
 ### 2. Microsoft Defender Threat Intelligence
 
@@ -173,10 +134,7 @@ To integrate custom API feeds:
 
 1. Create a custom Logic App for your API source
 2. Use the existing table schemas for storing indicators
-3. Follow the same pattern as the TAXII connector for:
-   - Authentication
-   - Parsing
-   - Data insertion
+3. Follow the same pattern as the TAXII connector for authentication, parsing, and data insertion
 
 ## Operational Tasks
 
@@ -189,14 +147,11 @@ To integrate custom API feeds:
 ### 2. Monitoring Feed Health
 
 1. Access the "CTI - Feed Health" workbook in Sentinel
-2. Monitor:
-   - Feed reliability
-   - Indicator freshness
-   - Distribution success rates
+2. Monitor feed reliability, indicator freshness, and distribution success rates
 
 ### 3. Tracking Detections
 
-1. Run the provided KQL queries regularly
+1. Run the provided KQL queries for threat detection and analysis
 2. Monitor the CTI analytics rules in Sentinel
 3. Check the transaction logs for successful IOC distribution
 
@@ -233,10 +188,7 @@ To modify or extend table schemas:
 To integrate additional threat intelligence sources:
 
 1. Create a new Logic App using the provided templates as examples
-2. Follow the same pattern for:
-   - Authentication
-   - Data normalization
-   - Log Analytics ingestion
+2. Follow the same pattern for authentication, data normalization, and Log Analytics ingestion
 
 ### Extending Analytics
 
@@ -265,7 +217,7 @@ To create custom analytics:
    - Adjust confidence thresholds
    - Update MITRE ATT&CK mappings
 
-## Security Considerations
+## Security Best Practices
 
 1. **Access Control**:
    - Implement least privilege principle
@@ -282,19 +234,10 @@ To create custom analytics:
    - Document indicator sources and handling
    - Implement appropriate data retention policies
 
-## Best Practices
+## Support and Contributions
 
-1. **Indicator Quality**:
-   - Regularly evaluate feed quality
-   - Focus on high-confidence indicators
-   - Implement proper aging and expiration
+For questions, issues, or contributions, please open an issue or pull request in the GitHub repository.
 
-2. **System Integration**:
-   - Test automations before production deployment
-   - Monitor performance impacts
-   - Implement rate limiting where necessary
+## License
 
-3. **Operational Workflow**:
-   - Develop clear processes for IOC management
-   - Create response playbooks for detections
-   - Train analysts on the solution
+This project is licensed under the MIT License - see the LICENSE file for details.
