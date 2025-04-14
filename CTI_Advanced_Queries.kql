@@ -1,0 +1,313 @@
+// ====================================================
+// MICROSOFT SENTINEL KQL QUERIES
+// ====================================================
+
+// 1. Hosts communicating with malicious IPs (cross-table correlation)
+let MaliciousIPs = CTI_IPIndicators_CL
+| where ConfidenceScore_d >= 75 and Active_b == true
+| project IPAddress = IPAddress_s, ThreatType = ThreatType_s, Confidence = ConfidenceScore_d, 
+    Source = SourceFeed_s, FirstSeen = FirstSeen_t, Description = Description_s;
+
+CommonSecurityLog
+| where DeviceAction != "deny" and DeviceAction != "drop"
+| where isnotempty(DestinationIP)
+| join kind=inner MaliciousIPs on $left.DestinationIP == $right.IPAddress
+| extend AlertTime = TimeGenerated
+| project AlertTime, DeviceName, SourceIP, DestinationIP, ThreatType, Confidence, 
+    Source, FirstSeen, Description, DeviceAction, ApplicationProtocol, RequestURL
+| order by AlertTime desc
+
+// 2. Multi-dimensional threat analysis (cross-IOC type correlation)
+// Detects when multiple IOC types related to the same threat are observed
+let DomainIOCs = CTI_DomainIndicators_CL
+| where Active_b == true
+| project IOCValue = Domain_s, ThreatType = ThreatType_s, ConfidenceScore = ConfidenceScore_d, Type = "Domain", Source = SourceFeed_s;
+
+let IPIOCs = CTI_IPIndicators_CL
+| where Active_b == true
+| project IOCValue = IPAddress_s, ThreatType = ThreatType_s, ConfidenceScore = ConfidenceScore_d, Type = "IP", Source = SourceFeed_s;
+
+let FileIOCs = CTI_FileHashIndicators_CL
+| where Active_b == true
+| project IOCValue = SHA256_s, ThreatType = ThreatType_s, ConfidenceScore = ConfidenceScore_d, Type = "FileHash", Source = SourceFeed_s;
+
+let AllIOCs = DomainIOCs
+| union IPIOCs
+| union FileIOCs;
+
+// Get hosts with multiple different IOC detections
+let DomainEvents = DnsEvents
+| where isnotempty(Name)
+| join kind=inner (
+    AllIOCs | where Type == "Domain"
+) on $left.Name == $right.IOCValue
+| extend ComputerName = Computer
+| project TimeGenerated, ComputerName, IOCValue, ThreatType, ConfidenceScore, Type;
+
+let IPEvents = CommonSecurityLog
+| where isnotempty(DestinationIP)
+| join kind=inner (
+    AllIOCs | where Type == "IP"
+) on $left.DestinationIP == $right.IOCValue
+| extend ComputerName = DeviceName
+| project TimeGenerated, ComputerName, IOCValue, ThreatType, ConfidenceScore, Type;
+
+let FileEvents = DeviceFileEvents
+| where isnotempty(SHA256)
+| join kind=inner (
+    AllIOCs | where Type == "FileHash"
+) on $left.SHA256 == $right.IOCValue
+| extend ComputerName = DeviceName
+| project TimeGenerated, ComputerName, IOCValue, ThreatType, ConfidenceScore, Type;
+
+// Combine and identify multi-IOC detections
+DomainEvents
+| union IPEvents
+| union FileEvents
+| summarize IOCTypes=make_set(Type), IOCValues=make_set(IOCValue), 
+    ThreatTypes=make_set(ThreatType), MaxConfidence=max(ConfidenceScore), 
+    Count=count(), EarliestDetection=min(TimeGenerated), 
+    LatestDetection=max(TimeGenerated)
+    by ComputerName
+| where array_length(IOCTypes) > 1
+| order by MaxConfidence desc, Count desc
+
+// 3. New high-confidence indicator tracking
+// Identifies newly added high-confidence indicators
+CTI_ThreatIntelIndicator_CL
+| where TimeGenerated > ago(24h)
+| where Confidence_d >= 80 and Active_b == true
+| extend IsNew = (CreatedTimeUtc_t > ago(24h))
+| summarize NewCount=countif(IsNew == true), 
+    TotalCount=count(), 
+    NewIndicators=make_set_if(Value_s, IsNew == true)
+    by Type_s, Source_s, ThreatType_s
+| order by NewCount desc
+
+// 4. Threat Intelligence effectiveness analysis
+let DetectionEvents = union
+    (CommonSecurityLog
+    | where isnotempty(DestinationIP)
+    | where DeviceAction !~ "block" and DeviceAction !~ "deny"
+    | extend IOCValue = DestinationIP, EventType = "NetworkConnection"),
+    (DeviceFileEvents
+    | where isnotempty(SHA256)
+    | extend IOCValue = SHA256, EventType = "FileExecution"),
+    (DnsEvents
+    | where isnotempty(Name)
+    | extend IOCValue = Name, EventType = "DnsQuery");
+
+let FeedMatches = DetectionEvents
+| join kind=inner (
+    union
+    (CTI_IPIndicators_CL
+    | where Active_b == true
+    | extend IOCValue = IPAddress_s, IOCType = "IP", Feed = SourceFeed_s, Confidence = ConfidenceScore_d),
+    (CTI_FileHashIndicators_CL
+    | where Active_b == true
+    | extend IOCValue = SHA256_s, IOCType = "FileHash", Feed = SourceFeed_s, Confidence = ConfidenceScore_d),
+    (CTI_DomainIndicators_CL
+    | where Active_b == true
+    | extend IOCValue = Domain_s, IOCType = "Domain", Feed = SourceFeed_s, Confidence = ConfidenceScore_d)
+) on IOCValue;
+
+// Feed effectiveness summary
+FeedMatches
+| summarize MatchCount=count(), 
+    UniqueIOCs=dcount(IOCValue), 
+    UniqueHosts=dcount(iff(EventType == "NetworkConnection", DeviceName, 
+        iff(EventType == "FileExecution", DeviceName, Computer)))
+    by Feed, IOCType
+| join kind=leftouter (
+    union
+    (CTI_IPIndicators_CL
+    | where Active_b == true
+    | extend IOCType = "IP", Feed = SourceFeed_s
+    | summarize TotalIOCs=count() by Feed, IOCType),
+    (CTI_FileHashIndicators_CL
+    | where Active_b == true
+    | extend IOCType = "FileHash", Feed = SourceFeed_s
+    | summarize TotalIOCs=count() by Feed, IOCType),
+    (CTI_DomainIndicators_CL
+    | where Active_b == true
+    | extend IOCType = "Domain", Feed = SourceFeed_s
+    | summarize TotalIOCs=count() by Feed, IOCType)
+) on Feed, IOCType
+| extend MatchRate = round((UniqueIOCs * 100.0 / TotalIOCs), 2)
+| order by MatchRate desc
+
+// 5. MITRE ATT&CK coverage analysis
+// Analyze coverage of your threat intelligence across MITRE ATT&CK tactics
+let TacticsMapping = CTI_TacticsTechniques_CL
+| summarize TechniqueCount=dcount(TechniqueId_s), 
+    SubTechniqueCount=dcount(iff(isempty(SubTechniqueId_s), "", SubTechniqueId_s)),
+    IndicatorCount=dcount(IndicatorId_g)
+    by TacticId_s, TacticName_s;
+
+let KnownIndicators = union
+    (CTI_IPIndicators_CL
+    | where Active_b == true
+    | extend IndicatorId = IndicatorId_g, IndicatorType = "IP", IndicatorValue = IPAddress_s),
+    (CTI_FileHashIndicators_CL
+    | where Active_b == true
+    | extend IndicatorId = IndicatorId_g, IndicatorType = "FileHash", IndicatorValue = SHA256_s),
+    (CTI_DomainIndicators_CL
+    | where Active_b == true
+    | extend IndicatorId = IndicatorId_g, IndicatorType = "Domain", IndicatorValue = Domain_s);
+
+KnownIndicators
+| join kind=leftouter CTI_TacticsTechniques_CL on $left.IndicatorId == $right.IndicatorId_g
+| summarize IndicatorCount=dcount(IndicatorId), 
+    IndicatorValues=make_set(IndicatorValue, 10),
+    TechniqueCount=dcount(iff(isempty(TechniqueId_s), "", TechniqueId_s)), 
+    TechniqueNames=make_set_if(TechniqueName_s, isnotempty(TechniqueName_s), 10)
+    by IndicatorType, TacticId_s, TacticName_s
+| where isnotempty(TacticId_s)
+| order by IndicatorCount desc
+
+// ====================================================
+// MICROSOFT DEFENDER XDR KQL QUERIES
+// ====================================================
+
+// 1. CTI-enabled advanced hunting query (correlate with DeviceNetworkEvents)
+let MaliciousIPs = externaldata(IPAddress: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/ip_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+DeviceNetworkEvents
+| where RemoteIP in (MaliciousIPs)
+| join kind=inner MaliciousIPs on $left.RemoteIP == $right.IPAddress
+| project Timestamp, DeviceName, LocalIP, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessFileName, 
+    ThreatType, Confidence, Source, Description
+| order by Timestamp desc
+
+// 2. Detection of traffic to malicious domains from CTI
+let MaliciousDomains = externaldata(Domain: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/domain_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+DeviceNetworkEvents
+| where isnotempty(RemoteUrl)
+| extend Domain = tostring(parse_url(RemoteUrl).Host)
+| where Domain in (MaliciousDomains)
+| join kind=inner MaliciousDomains on $left.Domain == $right.Domain
+| project Timestamp, DeviceName, LocalIP, RemoteIP, RemotePort, RemoteUrl, 
+    InitiatingProcessFileName, InitiatingProcessFolderPath,
+    ThreatType, Confidence, Source, Description
+| order by Timestamp desc
+
+// 3. Detection of execution of known malicious file hashes
+let MaliciousFileHashes = externaldata(SHA256: string, ThreatType: string, MalwareFamily: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/file_hash_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+DeviceFileEvents
+| where SHA256 in (MaliciousFileHashes)
+| join kind=inner MaliciousFileHashes on $left.SHA256 == $right.SHA256
+| project Timestamp, DeviceName, FileName, FolderPath, SHA256, 
+    InitiatingProcessAccountName, InitiatingProcessCommandLine,
+    ThreatType, MalwareFamily, Confidence, Source, Description
+| order by Timestamp desc
+
+// 4. Multi-stage attack detection using CTI
+// Step 1: Identify devices with suspicious domain lookups
+let MaliciousDomains = externaldata(Domain: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/domain_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+let SuspiciousDomainLookups = DeviceNetworkEvents
+| where isnotempty(RemoteUrl)
+| extend Domain = tostring(parse_url(RemoteUrl).Host)
+| where Domain in (MaliciousDomains)
+| project Timestamp, DeviceId, DeviceName, Domain;
+
+// Step 2: On those same devices, look for file hash detections
+let MaliciousFileHashes = externaldata(SHA256: string, ThreatType: string, MalwareFamily: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/file_hash_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+let SuspiciousFileExecutions = DeviceFileEvents
+| where SHA256 in (MaliciousFileHashes)
+| project Timestamp, DeviceId, DeviceName, FileName, SHA256;
+
+// Step 3: Look for connection to known bad IP addresses
+let MaliciousIPs = externaldata(IPAddress: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/ip_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+let SuspiciousConnections = DeviceNetworkEvents
+| where RemoteIP in (MaliciousIPs)
+| project Timestamp, DeviceId, DeviceName, RemoteIP;
+
+// Step 4: Combine to find multi-stage attacks
+let CompromisedDevices = SuspiciousDomainLookups
+| distinct DeviceId, DeviceName;
+
+// Find devices with multiple types of detections
+CompromisedDevices
+| join kind=inner (
+    SuspiciousDomainLookups
+    | summarize DomainLookupCount=count(), 
+        FirstDomainLookup=min(Timestamp), 
+        LastDomainLookup=max(Timestamp),
+        UniqueDomains=dcount(Domain),
+        DomainExamples=make_set(Domain, 5)
+        by DeviceId
+) on DeviceId
+| join kind=leftouter (
+    SuspiciousFileExecutions
+    | summarize FileCount=count(), 
+        FirstFileExecution=min(Timestamp), 
+        LastFileExecution=max(Timestamp),
+        UniqueHashes=dcount(SHA256),
+        FileExamples=make_set(FileName, 5)
+        by DeviceId
+) on DeviceId
+| join kind=leftouter (
+    SuspiciousConnections
+    | summarize ConnectionCount=count(), 
+        FirstConnection=min(Timestamp), 
+        LastConnection=max(Timestamp),
+        UniqueIPs=dcount(RemoteIP),
+        IPExamples=make_set(RemoteIP, 5)
+        by DeviceId
+) on DeviceId
+| extend TotalDetections = DomainLookupCount + coalesce(FileCount, 0) + coalesce(ConnectionCount, 0),
+    DetectionTypes = array_length(
+        array_concat(
+            iff(DomainLookupCount > 0, pack_array("MaliciousDomain"), dynamic([])),
+            iff(coalesce(FileCount, 0) > 0, pack_array("MaliciousFile"), dynamic([])),
+            iff(coalesce(ConnectionCount, 0) > 0, pack_array("MaliciousIP"), dynamic([]))
+        )
+    )
+| where DetectionTypes >= 2
+| order by TotalDetections desc
+
+// 5. Identify potential data exfiltration using CTI
+let MaliciousIPs = externaldata(IPAddress: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/ip_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+let MaliciousDomains = externaldata(Domain: string, ThreatType: string, Confidence: double, Source: string, Description: string)
+[@"https://ctitables.blob.core.windows.net/ctiexport/domain_indicators.csv"] with (format="csv", ignoreFirstRecord=true);
+
+// Look for outbound data transfers to malicious destinations
+DeviceNetworkEvents
+| where ActionType == "ConnectionSuccess"
+| where RemotePort in (21, 22, 23, 25, 137, 445, 1433, 3306, 5432) // Common exfiltration ports
+| where InitiatingProcessFileName !in ("svchost.exe", "System", "MsMpEng.exe")
+| where (isnotempty(RemoteUrl) and (parse_url(RemoteUrl).Host in (MaliciousDomains)))
+    or (RemoteIP in (MaliciousIPs))
+| extend DataDirection = iff(SentBytes > ReceivedBytes, "Outbound", "Inbound")
+| where DataDirection == "Outbound" and SentBytes > 100000 // 100 KB threshold
+| project Timestamp, DeviceName, LocalIP, RemoteIP, RemoteUrl, InitiatingProcessFileName, 
+    InitiatingProcessCommandLine, SentBytes, ReceivedBytes, RemotePort,
+    BytesRatio = toreal(SentBytes) / toreal(ReceivedBytes + 1)
+| order by SentBytes desc
+
+// 6. Monitor CTI-related alerts and their remediation status
+AlertInfo
+| where Title contains "threat intelligence" or Description contains "threat intelligence"
+    or Title contains "malicious" or Description contains "malicious"
+| extend WasRemediated = ServiceSource == "Microsoft Defender ATP" 
+    and (Status == "Resolved" or Status == "Remediated")
+| summarize AlertCount=count(), 
+    RemediatedCount=countif(WasRemediated), 
+    FirstAlert=min(Timestamp), 
+    LastAlert=max(Timestamp)
+    by Title, Severity, Category
+| extend RemediationRate = round((RemediatedCount * 100.0 / AlertCount), 0)
+| order by AlertCount desc
