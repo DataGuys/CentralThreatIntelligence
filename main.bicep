@@ -34,6 +34,22 @@ param ctiWorkspaceDailyQuotaGb int = 5
 ])
 param ctiWorkspaceSku string = 'PerGB2018'
 
+@description('SKU for Logic App service plan')
+@allowed([
+  'WS1'  // WorkflowStandard
+  'WS2'  // WorkflowStandard
+  'WS3'  // WorkflowStandard
+  'P1v2' // Premium
+  'P2v2' // Premium
+  'P3v2' // Premium
+])
+param logicAppSku string = 'WS1' // Default to WorkflowStandard
+
+@description('Maximum elastic worker count for Logic App service plan')
+@minValue(1)
+@maxValue(20)
+param maxElasticWorkerCount int = contains(logicAppSku, 'P') ? 20 : 10
+
 @description('Enable Microsoft Sentinel integration with the CTI workspace')
 param enableSentinelIntegration bool = true
 
@@ -75,6 +91,17 @@ param initialClientSecret string = ''
 
 @description('User assigned managed identity name')
 param managedIdentityName string = 'id-cti-automation'
+
+@description('Diagnostic settings retention period in days')
+@minValue(7)
+@maxValue(365)
+param diagnosticSettingsRetentionDays int = 30
+
+@description('List of allowed IP addresses for Key Vault firewall')
+param allowedIpAddresses array = []
+
+@description('List of allowed subnet IDs for Key Vault firewall')
+param allowedSubnetIds array = []
 
 @description('Tag values for resources')
 param tags object = {
@@ -285,6 +312,8 @@ var tables = [
       { name: 'TargetSystem_s', type: 'string' }
       { name: 'Status_s', type: 'string' }
       { name: 'ErrorMessage_s', type: 'string' }
+      { name: 'ErrorCode_s', type: 'string' }
+      { name: 'ErrorDetails_s', type: 'string' }
       { name: 'Timestamp_t', type: 'datetime' }
       { name: 'ActionId_g', type: 'guid' }
       { name: 'CorrelationId_g', type: 'guid' }
@@ -445,7 +474,7 @@ resource customTables 'Microsoft.OperationalInsights/workspaces/tables@2022-10-0
   }
 }]
 
-// Key Vault for storing secrets
+// Key Vault for storing secrets with enhanced security
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: keyVaultName
   location: location
@@ -461,8 +490,14 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
       family: 'A'
     }
     networkAcls: {
-      defaultAction: 'Allow'
+      defaultAction: 'Deny'
       bypass: 'AzureServices'
+      ipRules: !empty(allowedIpAddresses) ? [for ip in allowedIpAddresses: {
+        value: ip
+      }] : []
+      virtualNetworkRules: !empty(allowedSubnetIds) ? [for subnetId in allowedSubnetIds: {
+        id: subnetId
+      }] : []
     }
   }
 }
@@ -487,16 +522,37 @@ resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   }
 }
 
-// Logic App Service Plan (Premium for reliable execution)
+// Logic App Service Plan with enhanced scalability
 resource logicAppServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
   name: logicAppServicePlanName
   location: location
   tags: tags
   sku: {
-    name: 'WS1'
-    tier: 'WorkflowStandard'
+    name: logicAppSku
+    tier: contains(logicAppSku, 'P') ? 'Premium' : 'WorkflowStandard'
   }
-  properties: {}
+  properties: {
+    maximumElasticWorkerCount: maxElasticWorkerCount
+  }
+}
+
+// Diagnostic settings for Logic App Service Plan
+resource logicAppServicePlanDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: logicAppServicePlan
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
 }
 
 // Logic App API Connections
@@ -1349,7 +1405,10 @@ resource taxiiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
                   type: 'Foreach'
                   runtimeConfiguration: {
                     concurrency: {
-                      repetitions: 10
+                      repetitions: 20  // Increased from 10 for faster processing
+                    }
+                    staticResult: {
+                      staticResultOptions: "Disabled"  // Added for performance
                     }
                   }
                 }
@@ -1431,9 +1490,11 @@ resource taxiiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
                     body: {
                       ErrorSource_s: 'TAXII-Connector'
                       ErrorMessage_s: 'Failed to process TAXII feeds. Error: @{result(\'Get_TAXII_feeds\')}'
+                      ErrorCode_s: '@{outputs(\'Get_TAXII_feeds\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{outputs(\'Get_TAXII_feeds\')?[\'body\']}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                       RunbookName_s: 'CTI-TAXII2-Connector'
                       TriggerSource_s: 'Scheduled'
                     }
@@ -1482,6 +1543,35 @@ resource taxiiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
     logAnalyticsQueryConnection
     logAnalyticsConnection
   ]
+}
+
+// Add diagnostic settings for taxiiConnectorLogicApp
+resource taxiiConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: taxiiConnectorLogicApp
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
 }
 
 // Microsoft Defender XDR Connector
@@ -1621,7 +1711,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   IndicatorId_g: '@{item()[4]}'
                   RunbookName_s: 'CTI-DefenderXDR-Connector'
                   TriggerSource_s: 'Scheduled'
@@ -1651,9 +1741,11 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                       TargetSystem_s: 'Microsoft Defender XDR'
                       Status_s: 'Failed'
                       ErrorMessage_s: '@{outputs(\'Submit_IP_Indicator\')[\'body\']}'
+                      ErrorCode_s: '@{outputs(\'Submit_IP_Indicator\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{string(outputs(\'Submit_IP_Indicator\'))}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                       IndicatorId_g: '@{item()[4]}'
                       RunbookName_s: 'CTI-DefenderXDR-Connector'
                       TriggerSource_s: 'Scheduled'
@@ -1687,7 +1779,10 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 10
+              repetitions: 20  // Increased from 10 for faster processing
+            }
+            staticResult: {
+              staticResultOptions: "Disabled"  // Added for performance
             }
           }
         }
@@ -1763,7 +1858,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   IndicatorId_g: '@{item()[5]}'
                   RunbookName_s: 'CTI-DefenderXDR-Connector'
                   TriggerSource_s: 'Scheduled'
@@ -1793,9 +1888,11 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                       TargetSystem_s: 'Microsoft Defender XDR'
                       Status_s: 'Failed'
                       ErrorMessage_s: '@{outputs(\'Submit_FileHash_Indicator\')[\'body\']}'
+                      ErrorCode_s: '@{outputs(\'Submit_FileHash_Indicator\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{string(outputs(\'Submit_FileHash_Indicator\'))}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                       IndicatorId_g: '@{item()[5]}'
                       RunbookName_s: 'CTI-DefenderXDR-Connector'
                       TriggerSource_s: 'Scheduled'
@@ -1829,7 +1926,10 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 10
+              repetitions: 20  // Increased from 10 for faster processing
+            }
+            staticResult: {
+              staticResultOptions: "Disabled"  // Added for performance
             }
           }
         }
@@ -1905,7 +2005,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   IndicatorId_g: '@{item()[4]}'
                   RunbookName_s: 'CTI-DefenderXDR-Connector'
                   TriggerSource_s: 'Scheduled'
@@ -1935,9 +2035,11 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                       TargetSystem_s: 'Microsoft Defender XDR'
                       Status_s: 'Failed'
                       ErrorMessage_s: '@{outputs(\'Submit_URL_Indicator\')[\'body\']}'
+                      ErrorCode_s: '@{outputs(\'Submit_URL_Indicator\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{string(outputs(\'Submit_URL_Indicator\'))}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                       IndicatorId_g: '@{item()[4]}'
                       RunbookName_s: 'CTI-DefenderXDR-Connector'
                       TriggerSource_s: 'Scheduled'
@@ -1971,7 +2073,10 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 10
+              repetitions: 20  // Increased from 10 for faster processing
+            }
+            staticResult: {
+              staticResultOptions: "Disabled"  // Added for performance
             }
           }
         }
@@ -2000,7 +2105,36 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
   ]
 }
 
-// Microsoft Defender Threat Intelligence connector
+// Add diagnostic settings for defenderEndpointConnector
+resource defenderEndpointConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: defenderEndpointConnector
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Microsoft Defender Threat Intelligence (MDTI) Connector
 resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enableMDTI) {
   name: mdtiConnectorLogicAppName
   location: location
@@ -2021,6 +2155,10 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           defaultValue: {}
           type: 'Object'
         }
+        'workspaceName': {
+          defaultValue: ctiWorkspaceName
+          type: 'String'
+        }
         'tenantId': {
           defaultValue: tenantId
           type: 'String'
@@ -2033,8 +2171,8 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
       triggers: {
         Recurrence: {
           recurrence: {
-            frequency: 'Day'
-            interval: 1
+            frequency: 'Hour'
+            interval: 6
           }
           type: 'Recurrence'
         }
@@ -2049,7 +2187,7 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
             }
-            body: 'grant_type=client_credentials&client_id=@{parameters(\'clientId\')}&client_secret=@{listSecrets(resourceId(\'Microsoft.KeyVault/vaults/secrets\', \'${keyVaultName}\', \'${clientSecretName}\'), \'2023-02-01\').value}&resource=https://api.securitycenter.windows.com/'
+            body: 'grant_type=client_credentials&client_id=@{parameters(\'clientId\')}&client_secret=@{listSecrets(resourceId(\'Microsoft.KeyVault/vaults/secrets\', \'${keyVaultName}\', \'${clientSecretName}\'), \'2023-02-01\').value}&resource=https://api.securitycenter.microsoft.com/'
             retryPolicy: {
               type: 'fixed'
               count: 3
@@ -2066,10 +2204,10 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           type: 'Http'
           inputs: {
             method: 'GET'
-            uri: 'https://api.securitycenter.windows.com/api/indicators?$filter=confidenceLevel ge 50&$top=100'
+            uri: 'https://api.securitycenter.microsoft.com/api/indicators?$filter=sourceseverity eq \'High\' and expirationDateTime gt @{utcNow()}'
             headers: {
-              Accept: 'application/json'
               Authorization: 'Bearer @{body(\'Get_Authentication_Token\').access_token}'
+              'Content-Type': 'application/json'
             }
             retryPolicy: {
               type: 'fixed'
@@ -2078,7 +2216,7 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
             }
           }
         }
-        Parse_MDTI_Indicators: {
+        Parse_MDTI_Response: {
           runAfter: {
             Get_MDTI_Indicators: [
               'Succeeded'
@@ -2095,27 +2233,15 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
                   items: {
                     type: 'object'
                     properties: {
-                      indicatorValue: {
-                        type: 'string'
-                      }
-                      indicatorType: {
-                        type: 'string'
-                      }
-                      title: {
-                        type: 'string'
-                      }
-                      description: {
-                        type: 'string'
-                      }
-                      expirationTime: {
-                        type: 'string'
-                      }
-                      severity: {
-                        type: 'string'
-                      }
-                      confidence: {
-                        type: 'integer'
-                      }
+                      id: { type: 'string' }
+                      indicatorValue: { type: 'string' }
+                      indicatorType: { type: 'string' }
+                      title: { type: 'string' }
+                      creationTimeDateTimeUtc: { type: 'string' }
+                      expirationDateTime: { type: 'string' }
+                      action: { type: 'string' }
+                      severity: { type: 'string' }
+                      description: { type: 'string' }
                     }
                   }
                 }
@@ -2124,457 +2250,456 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           }
         }
         Process_MDTI_Indicators: {
-          foreach: '@body(\'Parse_MDTI_Indicators\').value'
+          foreach: '@body(\'Parse_MDTI_Response\').value'
           actions: {
-            Determine_Indicator_Type: {
+            Process_IP_Indicator: {
               actions: {
-                Process_IP_Indicator: {
-                  actions: {
-                    Send_IP_to_Log_Analytics: {
-                      runAfter: {}
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          IPAddress_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                          ConfidenceScore_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          SourceFeed_s: 'Microsoft Defender Threat Intelligence'
-                          FirstSeen_t: '@{utcNow()}'
-                          LastSeen_t: '@{utcNow()}'
-                          ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          TLP_s: 'TLP:AMBER'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_IPIndicators_CL'
-                        }
-                      }
-                    }
-                    Send_to_ThreatIntelIndicator_IP: {
-                      runAfter: {
-                        Send_IP_to_Log_Analytics: [
-                          'Succeeded'
-                        ]
-                      }
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          Type_s: 'ipv4-addr'
-                          Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          Pattern_s: ''
-                          PatternType_s: 'stix'
-                          Name_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'IP Indicator\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          Confidence_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          ValidFrom_t: '@{utcNow()}'
-                          ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          CreatedTimeUtc_t: '@{utcNow()}'
-                          UpdatedTimeUtc_t: '@{utcNow()}'
-                          Source_s: 'Microsoft Defender Threat Intelligence'
-                          SourceRef_s: 'https://ti.defender.microsoft.com/'
-                          KillChainPhases_s: ''
-                          Labels_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'\')}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          TLP_s: 'TLP:AMBER'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_ThreatIntelIndicator_CL'
-                        }
-                      }
-                    }
-                  }
+                Send_IP_to_Log_Analytics: {
                   runAfter: {}
-                  expression: {
-                    equals: [
-                      '@items(\'Process_MDTI_Indicators\').indicatorType'
-                      'IpAddress'
-                    ]
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IPAddress_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                      ConfidenceScore_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      SourceFeed_s: 'Microsoft Defender Threat Intelligence'
+                      FirstSeen_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      LastSeen_t: '@{utcNow()}'
+                      ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      TLP_s: 'TLP:AMBER'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_IPIndicators_CL'
+                    }
                   }
-                  type: 'If'
                 }
-                Process_Domain_Indicator: {
-                  actions: {
-                    Send_Domain_to_Log_Analytics: {
-                      runAfter: {}
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          Domain_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                          ConfidenceScore_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          SourceFeed_s: 'Microsoft Defender Threat Intelligence'
-                          FirstSeen_t: '@{utcNow()}'
-                          LastSeen_t: '@{utcNow()}'
-                          ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          TLP_s: 'TLP:AMBER'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_DomainIndicators_CL'
-                        }
-                      }
-                    }
-                    Send_to_ThreatIntelIndicator_Domain: {
-                      runAfter: {
-                        Send_Domain_to_Log_Analytics: [
-                          'Succeeded'
-                        ]
-                      }
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          Type_s: 'domain-name'
-                          Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          Pattern_s: ''
-                          PatternType_s: 'stix'
-                          Name_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Domain Indicator\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          Confidence_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          ValidFrom_t: '@{utcNow()}'
-                          ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          CreatedTimeUtc_t: '@{utcNow()}'
-                          UpdatedTimeUtc_t: '@{utcNow()}'
-                          Source_s: 'Microsoft Defender Threat Intelligence'
-                          SourceRef_s: 'https://ti.defender.microsoft.com/'
-                          KillChainPhases_s: ''
-                          Labels_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'\')}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          TLP_s: 'TLP:AMBER'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_ThreatIntelIndicator_CL'
-                        }
-                      }
-                    }
-                  }
+                Send_to_ThreatIntelIndicator: {
                   runAfter: {
-                    Process_IP_Indicator: [
+                    Send_IP_to_Log_Analytics: [
                       'Succeeded'
                     ]
                   }
-                  expression: {
-                    equals: [
-                      '@items(\'Process_MDTI_Indicators\').indicatorType'
-                      'DomainName'
-                    ]
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      Type_s: 'ipv4-addr'
+                      Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Name_s: '@{items(\'Process_MDTI_Indicators\').title}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      Action_s: '@{toLower(items(\'Process_MDTI_Indicators\').action)}'
+                      Confidence_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      ValidFrom_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      CreatedTimeUtc_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      UpdatedTimeUtc_t: '@{utcNow()}'
+                      Source_s: 'Microsoft Defender Threat Intelligence'
+                      SourceRef_s: 'https://ti.defender.microsoft.com'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      TLP_s: 'TLP:AMBER'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_ThreatIntelIndicator_CL'
+                    }
                   }
-                  type: 'If'
                 }
-                Process_FileHash_Indicator: {
-                  actions: {
-                    Send_FileHash_to_Log_Analytics: {
-                      runAfter: {}
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          SHA256_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                          ConfidenceScore_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          SourceFeed_s: 'Microsoft Defender Threat Intelligence'
-                          FirstSeen_t: '@{utcNow()}'
-                          LastSeen_t: '@{utcNow()}'
-                          ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          MalwareFamily_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          TLP_s: 'TLP:AMBER'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_FileHashIndicators_CL'
-                        }
-                      }
-                    }
-                    Send_to_ThreatIntelIndicator_Hash: {
-                      runAfter: {
-                        Send_FileHash_to_Log_Analytics: [
-                          'Succeeded'
-                        ]
-                      }
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          Type_s: 'file-hash-sha256'
-                          Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          Pattern_s: ''
-                          PatternType_s: 'stix'
-                          Name_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'File Hash Indicator\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          Confidence_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          ValidFrom_t: '@{utcNow()}'
-                          ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          CreatedTimeUtc_t: '@{utcNow()}'
-                          UpdatedTimeUtc_t: '@{utcNow()}'
-                          Source_s: 'Microsoft Defender Threat Intelligence'
-                          SourceRef_s: 'https://ti.defender.microsoft.com/'
-                          KillChainPhases_s: ''
-                          Labels_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'\')}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          TLP_s: 'TLP:AMBER'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                        }
-                        host: {
-                              connection: {
-                                name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                              }
-                            }
-                            method: 'post'
-                            path: '/api/logs'
-                            queries: {
-                              logType: 'CTI_ThreatIntelIndicator_CL'
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
+                Log_Transaction: {
                   runAfter: {
-                    Process_Domain_Indicator: [
+                    Send_to_ThreatIntelIndicator: [
                       'Succeeded'
                     ]
                   }
-                  expression: {
-                    or: [
-                      {
-                        equals: [
-                          '@items(\'Process_MDTI_Indicators\').indicatorType'
-                          'FileSha256'
-                        ]
-                      }
-                      {
-                        equals: [
-                          '@items(\'Process_MDTI_Indicators\').indicatorType'
-                          'FileSha1'
-                        ]
-                      }
-                      {
-                        equals: [
-                          '@items(\'Process_MDTI_Indicators\').indicatorType'
-                          'FileMd5'
-                        ]
-                      }
-                    ]
-                  }
-                  type: 'If'
-                }
-                Process_URL_Indicator: {
-                  actions: {
-                    Send_URL_to_Log_Analytics: {
-                      runAfter: {}
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          URL_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                          ConfidenceScore_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          SourceFeed_s: 'Microsoft Defender Threat Intelligence'
-                          FirstSeen_t: '@{utcNow()}'
-                          LastSeen_t: '@{utcNow()}'
-                          ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          TLP_s: 'TLP:AMBER'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_URLIndicators_CL'
-                        }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: 'IP'
+                      IndicatorValue_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Success'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      RunbookName_s: 'CTI-MDTI-Connector'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
                       }
                     }
-                    Send_to_ThreatIntelIndicator_URL: {
-                      runAfter: {
-                        Send_URL_to_Log_Analytics: [
-                          'Succeeded'
-                        ]
-                      }
-                      type: 'ApiConnection'
-                      inputs: {
-                        body: {
-                          Type_s: 'url'
-                          Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
-                          Pattern_s: ''
-                          PatternType_s: 'stix'
-                          Name_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'URL Indicator\')}'
-                          Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
-                          Action_s: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), \'AlertAndBlock\', \'Alert\')}'
-                          Confidence_d: '@{items(\'Process_MDTI_Indicators\').confidence}'
-                          ValidFrom_t: '@{utcNow()}'
-                          ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationTime}'
-                          CreatedTimeUtc_t: '@{utcNow()}'
-                          UpdatedTimeUtc_t: '@{utcNow()}'
-                          Source_s: 'Microsoft Defender Threat Intelligence'
-                          SourceRef_s: 'https://ti.defender.microsoft.com/'
-                          KillChainPhases_s: ''
-                          Labels_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'\')}'
-                          ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\'), \'title\'), items(\'Process_MDTI_Indicators\').title, \'Unknown\')}'
-                          TLP_s: 'TLP:AMBER'
-                          DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
-                          Active_b: true
-                          ObjectId_g: '@{guid()}'
-                          IndicatorId_g: '@{guid()}'
-                        }
-                        host: {
-                          connection: {
-                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                          }
-                        }
-                        method: 'post'
-                        path: '/api/logs'
-                        queries: {
-                          logType: 'CTI_ThreatIntelIndicator_CL'
-                        }
-                      }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
                     }
                   }
-                  runAfter: {
-                    Process_FileHash_Indicator: [
-                      'Succeeded'
-                    ]
-                  }
-                  expression: {
-                    equals: [
-                      '@items(\'Process_MDTI_Indicators\').indicatorType'
-                      'Url'
-                    ]
-                  }
-                  type: 'If'
                 }
               }
               runAfter: {}
+              expression: {
+                equals: [
+                  '@items(\'Process_MDTI_Indicators\').indicatorType'
+                  'IpAddress'
+                ]
+              }
+              type: 'If'
+            }
+            Process_Domain_Indicator: {
+              actions: {
+                Send_Domain_to_Log_Analytics: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      Domain_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                      ConfidenceScore_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      SourceFeed_s: 'Microsoft Defender Threat Intelligence'
+                      FirstSeen_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      LastSeen_t: '@{utcNow()}'
+                      ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      TLP_s: 'TLP:AMBER'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_DomainIndicators_CL'
+                    }
+                  }
+                }
+                Send_to_ThreatIntelIndicator_Domain: {
+                  runAfter: {
+                    Send_Domain_to_Log_Analytics: [
+                      'Succeeded'
+                    ]
+                  }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      Type_s: 'domain-name'
+                      Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Name_s: '@{items(\'Process_MDTI_Indicators\').title}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      Action_s: '@{toLower(items(\'Process_MDTI_Indicators\').action)}'
+                      Confidence_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      ValidFrom_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      CreatedTimeUtc_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      UpdatedTimeUtc_t: '@{utcNow()}'
+                      Source_s: 'Microsoft Defender Threat Intelligence'
+                      SourceRef_s: 'https://ti.defender.microsoft.com'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      TLP_s: 'TLP:AMBER'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_ThreatIntelIndicator_CL'
+                    }
+                  }
+                }
+                Log_Transaction_Domain: {
+                  runAfter: {
+                    Send_to_ThreatIntelIndicator_Domain: [
+                      'Succeeded'
+                    ]
+                  }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: 'Domain'
+                      IndicatorValue_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Success'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      RunbookName_s: 'CTI-MDTI-Connector'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Process_IP_Indicator: [
+                  'Succeeded'
+                ]
+              }
+              expression: {
+                equals: [
+                  '@items(\'Process_MDTI_Indicators\').indicatorType'
+                  'DomainName'
+                ]
+              }
+              type: 'If'
+            }
+            Process_FileHash_Indicator: {
+              actions: {
+                Send_FileHash_to_Log_Analytics: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      SHA256_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                      ConfidenceScore_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      SourceFeed_s: 'Microsoft Defender Threat Intelligence'
+                      FirstSeen_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      LastSeen_t: '@{utcNow()}'
+                      ExpirationDateTime_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      MalwareFamily_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      TLP_s: 'TLP:AMBER'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_FileHashIndicators_CL'
+                    }
+                  }
+                }
+                Send_to_ThreatIntelIndicator_Hash: {
+                  runAfter: {
+                    Send_FileHash_to_Log_Analytics: [
+                      'Succeeded'
+                    ]
+                  }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      Type_s: 'file-hash-sha256'
+                      Value_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Name_s: '@{items(\'Process_MDTI_Indicators\').title}'
+                      Description_s: '@{items(\'Process_MDTI_Indicators\').description}'
+                      Action_s: '@{toLower(items(\'Process_MDTI_Indicators\').action)}'
+                      Confidence_d: '@{if(equals(items(\'Process_MDTI_Indicators\').severity, \'High\'), 90, if(equals(items(\'Process_MDTI_Indicators\').severity, \'Medium\'), 70, 50))}'
+                      ValidFrom_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      ValidUntil_t: '@{items(\'Process_MDTI_Indicators\').expirationDateTime}'
+                      CreatedTimeUtc_t: '@{items(\'Process_MDTI_Indicators\').creationTimeDateTimeUtc}'
+                      UpdatedTimeUtc_t: '@{utcNow()}'
+                      Source_s: 'Microsoft Defender Threat Intelligence'
+                      SourceRef_s: 'https://ti.defender.microsoft.com'
+                      ThreatType_s: '@{if(contains(items(\'Process_MDTI_Indicators\').title, \':\'), last(split(items(\'Process_MDTI_Indicators\').title, \': \')), \'Unknown\')}'
+                      TLP_s: 'TLP:AMBER'
+                      DistributionTargets_s: 'Microsoft Sentinel, Microsoft Defender XDR'
+                      Active_b: true
+                      ObjectId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      IndicatorId_g: '@{guid()}'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_ThreatIntelIndicator_CL'
+                    }
+                  }
+                }
+                Log_Transaction_FileHash: {
+                  runAfter: {
+                    Send_to_ThreatIntelIndicator_Hash: [
+                      'Succeeded'
+                    ]
+                  }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: 'FileHash'
+                      IndicatorValue_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Success'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      RunbookName_s: 'CTI-MDTI-Connector'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Process_Domain_Indicator: [
+                  'Succeeded'
+                ]
+              }
+              expression: {
+                or: [
+                  {
+                    equals: [
+                      '@items(\'Process_MDTI_Indicators\').indicatorType'
+                      'FileSha256'
+                    ]
+                  }
+                  {
+                    equals: [
+                      '@items(\'Process_MDTI_Indicators\').indicatorType'
+                      'FileSha1'
+                    ]
+                  }
+                  {
+                    equals: [
+                      '@items(\'Process_MDTI_Indicators\').indicatorType'
+                      'FileMd5'
+                    ]
+                  }
+                ]
+              }
+              type: 'If'
+            }
+            Handle_Error: {
+              actions: {
+                Log_Error: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: '@{items(\'Process_MDTI_Indicators\').indicatorType}'
+                      IndicatorValue_s: '@{items(\'Process_MDTI_Indicators\').indicatorValue}'
+                      Action_s: '@{items(\'Process_MDTI_Indicators\').action}'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Failed'
+                      ErrorMessage_s: 'Failed to process indicator'
+                      ErrorCode_s: '500'
+                      ErrorDetails_s: '@{string(items(\'Process_MDTI_Indicators\'))}'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{items(\'Process_MDTI_Indicators\').id}'
+                      RunbookName_s: 'CTI-MDTI-Connector'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Process_FileHash_Indicator: [
+                  'Failed'
+                ]
+              }
               type: 'Scope'
             }
           }
           runAfter: {
-            Parse_MDTI_Indicators: [
+            Parse_MDTI_Response: [
               'Succeeded'
             ]
           }
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 20
+              repetitions: 20  // Increased from default for better performance
+            }
+            staticResult: {
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
-        Log_MDTI_Feed_Update: {
-          runAfter: {
-            Process_MDTI_Indicators: [
-              'Succeeded'
-            ]
-          }
-          type: 'ApiConnection'
-          inputs: {
-            body: {
-              FeedId_g: '@{guid()}'
-              FeedName_s: 'Microsoft Defender Threat Intelligence'
-              FeedType_s: 'MDTI'
-              FeedURL_s: 'https://ti.defender.microsoft.com/'
-              Status_s: 'Active'
-              LastUpdated_t: '@{utcNow()}'
-              UpdateFrequency_s: '1 day'
-              IndicatorCount_d: '@{length(body(\'Parse_MDTI_Indicators\').value)}'
-              Description_s: 'Microsoft Defender Threat Intelligence Premium Feed'
-              Category_s: 'Microsoft'
-              TLP_s: 'TLP:AMBER'
-              ConfidenceScore_d: 80
-              Active_b: true
-            }
-            host: {
-              connection: {
-                name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-              }
-            }
-            method: 'post'
-            path: '/api/logs'
-            queries: {
-              logType: 'CTI_IntelligenceFeeds_CL'
-            }
-          }
-        }
-        Handle_MDTI_Error: {
+        Handle_Main_Error: {
           actions: {
-            Log_MDTI_Error: {
+            Log_Main_Error: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
                 body: {
                   ErrorSource_s: 'MDTI-Connector'
-                  ErrorMessage_s: 'Failed to get MDTI indicators. Error: @{outputs(\'Get_MDTI_Indicators\')}'
+                  ErrorMessage_s: 'Failed to retrieve MDTI indicators'
+                  ErrorCode_s: '@{outputs(\'Get_MDTI_Indicators\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Get_MDTI_Indicators\')?[\'body\']}'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   RunbookName_s: 'CTI-MDTI-Connector'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -2599,7 +2724,6 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           type: 'Scope'
         }
       }
-      outputs: {}
     }
     parameters: {
       '$connections': {
@@ -2623,8 +2747,37 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
   ]
 }
 
-// Microsoft Entra ID connector
-resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
+// Add diagnostic settings for MDTI connector
+resource mdtiConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableMDTI) {
+  scope: mdtiConnectorLogicApp
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Microsoft Entra ID Connector
+resource entraIDConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: entraIDConnectorLogicAppName
   location: location
   tags: tags
@@ -2656,79 +2809,123 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
       triggers: {
         Recurrence: {
           recurrence: {
-            frequency: 'Hour'
-            interval: 6
+            frequency: 'Day'
+            interval: 1
           }
           type: 'Recurrence'
         }
       }
       actions: {
-        Process_High_Risk_IPs: {
+        Get_High_Risk_Users: {
           runAfter: {}
           type: 'ApiConnection'
           inputs: {
-            body: 'CTI_IPIndicators_CL \n| where ConfidenceScore_d >= 90 and isnotempty(IPAddress_s) \n| where not(IPAddress_s matches regex "^10\\\\.|^172\\\\.(1[6-9]|2[0-9]|3[0-1])\\\\.|^192\\\\.168\\\\.")\n| where "Microsoft Entra ID" in (split(DistributionTargets_s, ", "))\n| project IPAddress_s, ConfidenceScore_d, ThreatType_s, Description_s, IndicatorId_g\n| limit 100'
             host: {
               connection: {
-                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
+                name: '@parameters(\'$connections\')[\'microsoftgraph\'][\'connectionId\']'
               }
             }
-            method: 'post'
-            path: '/queryData'
+            method: 'get'
+            path: '/v1.0/identityProtection/riskyUsers'
             queries: {
-              resourcegroups: '@resourceGroup().name'
-              resourcename: '@{parameters(\'workspaceName\')}'
-              resourcetype: 'Log Analytics Workspace'
-              subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 24 hours'
+              $filter: 'riskLevel eq \'high\''
+              $select: 'id,userPrincipalName,riskLevel,riskState,riskDetail,riskLastUpdatedDateTime'
             }
           }
         }
-        For_Each_High_Risk_IP: {
-          foreach: '@body(\'Process_High_Risk_IPs\').tables[0].rows'
+        Process_Risky_Users: {
+          foreach: '@body(\'Get_High_Risk_Users\')?[\'value\']'
           actions: {
-            Create_Named_Location: {
+            Send_to_Log_Analytics: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  '@odata.type': '#microsoft.graph.ipNamedLocation'
-                  displayName: 'CTI-BlockedIP-@{first(split(item()[0],\'.\'))}-@{skip(split(item()[0],\'.\'),1)[0]}-@{skip(split(item()[0],\'.\'),2)[0]}-@{last(split(item()[0],\'.\'))}'
-                  isTrusted: false
-                  ipRanges: [
-                    {
-                      '@odata.type': '#microsoft.graph.ipRange'
-                      cidrAddress: '@{item()[0]}/32'
-                    }
-                  ]
+                  EmailAddress_s: '@{items(\'Process_Risky_Users\')?[\'userPrincipalName\']}'
+                  ObjectId_g: '@{items(\'Process_Risky_Users\')?[\'id\']}'
+                  IndicatorId_g: '@{guid()}'
+                  ConfidenceScore_d: 90
+                  SourceFeed_s: 'Microsoft Entra ID'
+                  FirstSeen_t: '@{items(\'Process_Risky_Users\')?[\'riskLastUpdatedDateTime\']}'
+                  LastSeen_t: '@{utcNow()}'
+                  ExpirationDateTime_t: '@{addDays(utcNow(), 7)}'
+                  ThreatType_s: '@{items(\'Process_Risky_Users\')?[\'riskDetail\']}'
+                  Description_s: 'High risk user detected by Microsoft Entra ID'
+                  TLP_s: 'TLP:AMBER'
+                  Action_s: 'Alert'
+                  DistributionTargets_s: 'Microsoft Sentinel'
+                  Active_b: true
                 }
                 host: {
                   connection: {
-                    name: '@parameters(\'$connections\')[\'microsoftgraph\'][\'connectionId\']'
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
                   }
                 }
                 method: 'post'
-                path: '/v1.0/identity/conditionalAccess/namedLocations'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_EmailIndicators_CL'
+                }
               }
             }
-            Log_Transaction_EntraID: {
+            Send_to_ThreatIntelIndicator: {
               runAfter: {
-                Create_Named_Location: [
+                Send_to_Log_Analytics: [
                   'Succeeded'
                 ]
               }
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  IndicatorType_s: 'IP'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Block'
-                  TargetSystem_s: 'Microsoft Entra ID'
+                  Type_s: 'email-addr'
+                  Value_s: '@{items(\'Process_Risky_Users\')?[\'userPrincipalName\']}'
+                  Name_s: 'High risk user - @{items(\'Process_Risky_Users\')?[\'userPrincipalName\']}'
+                  Description_s: 'High risk user detected by Microsoft Entra ID. Risk type: @{items(\'Process_Risky_Users\')?[\'riskDetail\']}'
+                  Action_s: 'alert'
+                  Confidence_d: 90
+                  ValidFrom_t: '@{items(\'Process_Risky_Users\')?[\'riskLastUpdatedDateTime\']}'
+                  ValidUntil_t: '@{addDays(utcNow(), 7)}'
+                  CreatedTimeUtc_t: '@{items(\'Process_Risky_Users\')?[\'riskLastUpdatedDateTime\']}'
+                  UpdatedTimeUtc_t: '@{utcNow()}'
+                  Source_s: 'Microsoft Entra ID'
+                  SourceRef_s: '@{parameters(\'graphApiUrl\')}/identityProtection/riskyUsers'
+                  ThreatType_s: '@{items(\'Process_Risky_Users\')?[\'riskDetail\']}'
+                  TLP_s: 'TLP:AMBER'
+                  DistributionTargets_s: 'Microsoft Sentinel'
+                  Active_b: true
+                  ObjectId_g: '@{items(\'Process_Risky_Users\')?[\'id\']}'
+                  IndicatorId_g: '@{guid()}'
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_ThreatIntelIndicator_CL'
+                }
+              }
+            }
+            Log_Transaction: {
+              runAfter: {
+                Send_to_ThreatIntelIndicator: [
+                  'Succeeded'
+                ]
+              }
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  IndicatorType_s: 'Email'
+                  IndicatorValue_s: '@{items(\'Process_Risky_Users\')?[\'userPrincipalName\']}'
+                  Action_s: 'Alert'
+                  TargetSystem_s: 'CTI Platform'
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[4]}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  IndicatorId_g: '@{guid()}'
                   RunbookName_s: 'CTI-EntraID-Connector'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -2744,23 +2941,24 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
             }
-            Handle_EntraID_Error: {
+            Handle_Error: {
               actions: {
-                Log_EntraID_Error: {
+                Log_Error: {
                   runAfter: {}
                   type: 'ApiConnection'
                   inputs: {
                     body: {
-                      IndicatorType_s: 'IP'
-                      IndicatorValue_s: '@{item()[0]}'
-                      Action_s: 'Block'
-                      TargetSystem_s: 'Microsoft Entra ID'
+                      IndicatorType_s: 'Email'
+                      IndicatorValue_s: '@{items(\'Process_Risky_Users\')?[\'userPrincipalName\']}'
+                      Action_s: 'Alert'
+                      TargetSystem_s: 'CTI Platform'
                       Status_s: 'Failed'
-                      ErrorMessage_s: '@{outputs(\'Create_Named_Location\')}'
+                      ErrorMessage_s: 'Failed to process risky user'
+                      ErrorCode_s: '500'
+                      ErrorDetails_s: '@{string(items(\'Process_Risky_Users\'))}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
-                      IndicatorId_g: '@{item()[4]}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                       RunbookName_s: 'CTI-EntraID-Connector'
                       TriggerSource_s: 'Scheduled'
                     }
@@ -2778,7 +2976,7 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
               runAfter: {
-                Create_Named_Location: [
+                Send_to_Log_Analytics: [
                   'Failed'
                 ]
               }
@@ -2786,19 +2984,58 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
             }
           }
           runAfter: {
-            Process_High_Risk_IPs: [
+            Get_High_Risk_Users: [
               'Succeeded'
             ]
           }
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 5
+              repetitions: 20  // Increased for better performance
+            }
+            staticResult: {
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
+        Handle_Main_Error: {
+          actions: {
+            Log_Main_Error: {
+              runAfter: {}
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  ErrorSource_s: 'EntraID-Connector'
+                  ErrorMessage_s: 'Failed to retrieve risky users'
+                  ErrorCode_s: '@{outputs(\'Get_High_Risk_Users\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Get_High_Risk_Users\')?[\'body\']}'
+                  Timestamp_t: '@{utcNow()}'
+                  ActionId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  RunbookName_s: 'CTI-EntraID-Connector'
+                  TriggerSource_s: 'Scheduled'
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_TransactionLog_CL'
+                }
+              }
+            }
+          }
+          runAfter: {
+            Get_High_Risk_Users: [
+              'Failed'
+            ]
+          }
+          type: 'Scope'
+        }
       }
-      outputs: {}
     }
     parameters: {
       '$connections': {
@@ -2807,11 +3044,6 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
             connectionId: logAnalyticsConnection.id
             connectionName: logAnalyticsConnection.name
             id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azureloganalyticsdatacollector')
-          }
-          azuremonitorlogs: {
-            connectionId: logAnalyticsQueryConnection.id
-            connectionName: logAnalyticsQueryConnection.name
-            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuremonitorlogs')
           }
           microsoftgraph: {
             connectionId: microsoftGraphConnection.id
@@ -2827,8 +3059,37 @@ resource entraIDConnector 'Microsoft.Logic/workflows@2019-05-01' = {
   ]
 }
 
-// Exchange Online connector
-resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
+// Add diagnostic settings for Entra ID connector
+resource entraIDConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: entraIDConnectorLogicApp
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Exchange Online Connector
+resource exoConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: exoConnectorLogicAppName
   location: location
   tags: tags
@@ -2852,26 +3113,22 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }
-        'graphApiUrl': {
-          defaultValue: graphApiUrl
-          type: 'String'
-        }
       }
       triggers: {
         Recurrence: {
           recurrence: {
             frequency: 'Hour'
-            interval: 6
+            interval: 12
           }
           type: 'Recurrence'
         }
       }
       actions: {
-        Process_High_Risk_Domains: {
+        Get_High_Confidence_Indicators: {
           runAfter: {}
           type: 'ApiConnection'
           inputs: {
-            body: 'CTI_DomainIndicators_CL \n| where ConfidenceScore_d >= 90 and isnotempty(Domain_s)\n| where "Microsoft Exchange Online" in (split(DistributionTargets_s, ", "))\n| project Domain_s, ConfidenceScore_d, ThreatType_s, Description_s, IndicatorId_g\n| limit 100'
+            body: 'CTI_ThreatIntelIndicator_CL \n| where Confidence_d >= 85 and Active_b == true\n| where TimeGenerated > ago(1d)\n| where "Exchange Online" in (split(DistributionTargets_s, ", "))\n| where Type_s in ("domain-name", "url", "email-addr", "ipv4-addr")\n| project Type_s, Value_s, Confidence_d, ThreatType_s, Description_s, Action_s, IndicatorId_g\n| limit 500'
             host: {
               connection: {
                 name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
@@ -2884,49 +3141,52 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
               resourcename: '@{parameters(\'workspaceName\')}'
               resourcetype: 'Log Analytics Workspace'
               subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 24 hours'
+              timerange: 'Last day'
             }
           }
         }
-        For_Each_High_Risk_Domain: {
-          foreach: '@body(\'Process_High_Risk_Domains\').tables[0].rows'
+        Process_EXO_Indicators: {
+          foreach: '@body(\'Get_High_Confidence_Indicators\').tables[0].rows'
           actions: {
-            Create_ExO_TI_Domain: {
+            Submit_to_EXO: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
-                body: {
-                  domainName: '@{item()[0]}'
-                  threatType: '@{item()[2]}'
-                  expirationDateTime: '@{addDays(utcNow(), 30)}'
-                }
                 host: {
                   connection: {
                     name: '@parameters(\'$connections\')[\'microsoftgraph\'][\'connectionId\']'
                   }
                 }
                 method: 'post'
-                path: '/v1.0/security/threatIntelligence/hostedDomains'
+                path: '/v1.0/security/threatIntelligence/blockedSenders'
+                body: {
+                  senderAddress: '@{if(equals(item()[0], \'email-addr\'), item()[1], if(equals(item()[0], \'domain-name\'), concat(\'*@\', item()[1]), \'\'))}'
+                  senderDomain: '@{if(equals(item()[0], \'domain-name\'), item()[1], \'\')}'
+                  senderIP: '@{if(equals(item()[0], \'ipv4-addr\'), item()[1], \'\')}'
+                  threatType: '@{if(empty(item()[3]), \'Malware\', item()[3])}'
+                  confidenceLevel: '@{if(greater(item()[2], 90), \'High\', if(greater(item()[2], 70), \'Medium\', \'Low\'))}'
+                  note: '@{if(empty(item()[4]), concat(\'Added by CTI platform - ThreatType: \', item()[3]), item()[4])}'
+                }
               }
             }
-            Log_Transaction_ExO: {
+            Log_Transaction: {
               runAfter: {
-                Create_ExO_TI_Domain: [
+                Submit_to_EXO: [
                   'Succeeded'
                 ]
               }
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  IndicatorType_s: 'Domain'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Block'
-                  TargetSystem_s: 'Microsoft Exchange Online'
+                  IndicatorType_s: '@{item()[0]}'
+                  IndicatorValue_s: '@{item()[1]}'
+                  Action_s: '@{item()[5]}'
+                  TargetSystem_s: 'Exchange Online'
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[4]}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  IndicatorId_g: '@{item()[6]}'
                   RunbookName_s: 'CTI-ExchangeOnline-Connector'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -2942,23 +3202,25 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
             }
-            Handle_ExO_Error: {
+            Handle_Error: {
               actions: {
-                Log_ExO_Error: {
+                Log_Error: {
                   runAfter: {}
                   type: 'ApiConnection'
                   inputs: {
                     body: {
-                      IndicatorType_s: 'Domain'
-                      IndicatorValue_s: '@{item()[0]}'
-                      Action_s: 'Block'
-                      TargetSystem_s: 'Microsoft Exchange Online'
+                      IndicatorType_s: '@{item()[0]}'
+                      IndicatorValue_s: '@{item()[1]}'
+                      Action_s: '@{item()[5]}'
+                      TargetSystem_s: 'Exchange Online'
                       Status_s: 'Failed'
-                      ErrorMessage_s: '@{outputs(\'Create_ExO_TI_Domain\')}'
+                      ErrorMessage_s: '@{outputs(\'Submit_to_EXO\')[\'body\']}'
+                      ErrorCode_s: '@{outputs(\'Submit_to_EXO\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{string(outputs(\'Submit_to_EXO\'))}'
                       Timestamp_t: '@{utcNow()}'
                       ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
-                      IndicatorId_g: '@{item()[4]}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{item()[6]}'
                       RunbookName_s: 'CTI-ExchangeOnline-Connector'
                       TriggerSource_s: 'Scheduled'
                     }
@@ -2976,7 +3238,7 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
               runAfter: {
-                Create_ExO_TI_Domain: [
+                Submit_to_EXO: [
                   'Failed'
                 ]
               }
@@ -2984,81 +3246,34 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
             }
           }
           runAfter: {
-            Process_High_Risk_Domains: [
+            Get_High_Confidence_Indicators: [
               'Succeeded'
             ]
           }
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 5
+              repetitions: 20  // Increased for better performance
+            }
+            staticResult: {
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
-        Process_High_Risk_Emails: {
-          runAfter: {
-            For_Each_High_Risk_Domain: [
-              'Succeeded'
-            ]
-          }
-          type: 'ApiConnection'
-          inputs: {
-            body: 'CTI_EmailIndicators_CL \n| where ConfidenceScore_d >= 90 and isnotempty(EmailAddress_s)\n| where "Microsoft Exchange Online" in (split(DistributionTargets_s, ", "))\n| project EmailAddress_s, ConfidenceScore_d, ThreatType_s, Description_s, IndicatorId_g\n| limit 100'
-            host: {
-              connection: {
-                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
-              }
-            }
-            method: 'post'
-            path: '/queryData'
-            queries: {
-              resourcegroups: '@resourceGroup().name'
-              resourcename: '@{parameters(\'workspaceName\')}'
-              resourcetype: 'Log Analytics Workspace'
-              subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 24 hours'
-            }
-          }
-        }
-        For_Each_High_Risk_Email: {
-          foreach: '@body(\'Process_High_Risk_Emails\').tables[0].rows'
+        Handle_Main_Error: {
           actions: {
-            Create_ExO_TI_Email: {
+            Log_Main_Error: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  emailAddress: '@{item()[0]}'
-                  threatType: '@{item()[2]}'
-                  expirationDateTime: '@{addDays(utcNow(), 30)}'
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'microsoftgraph\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/v1.0/security/threatIntelligence/emailSenders'
-              }
-            }
-            Log_Transaction_ExO_Email: {
-              runAfter: {
-                Create_ExO_TI_Email: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorType_s: 'Email'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Block'
-                  TargetSystem_s: 'Microsoft Exchange Online'
-                  Status_s: 'Success'
+                  ErrorSource_s: 'ExchangeOnline-Connector'
+                  ErrorMessage_s: 'Failed to retrieve indicators'
+                  ErrorCode_s: '@{outputs(\'Get_High_Confidence_Indicators\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Get_High_Confidence_Indicators\')?[\'body\']}'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[4]}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   RunbookName_s: 'CTI-ExchangeOnline-Connector'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -3074,61 +3289,15 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
             }
-            Handle_ExO_Email_Error: {
-              actions: {
-                Log_ExO_Email_Error: {
-                  runAfter: {}
-                  type: 'ApiConnection'
-                  inputs: {
-                    body: {
-                      IndicatorType_s: 'Email'
-                      IndicatorValue_s: '@{item()[0]}'
-                      Action_s: 'Block'
-                      TargetSystem_s: 'Microsoft Exchange Online'
-                      Status_s: 'Failed'
-                      ErrorMessage_s: '@{outputs(\'Create_ExO_TI_Email\')}'
-                      Timestamp_t: '@{utcNow()}'
-                      ActionId_g: '@{guid()}'
-                      CorrelationId_g: '@{guid()}'
-                      IndicatorId_g: '@{item()[4]}'
-                      RunbookName_s: 'CTI-ExchangeOnline-Connector'
-                      TriggerSource_s: 'Scheduled'
-                    }
-                    host: {
-                      connection: {
-                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                      }
-                    }
-                    method: 'post'
-                    path: '/api/logs'
-                    queries: {
-                      logType: 'CTI_TransactionLog_CL'
-                    }
-                  }
-                }
-              }
-              runAfter: {
-                Create_ExO_TI_Email: [
-                  'Failed'
-                ]
-              }
-              type: 'Scope'
-            }
           }
           runAfter: {
-            Process_High_Risk_Emails: [
-              'Succeeded'
+            Get_High_Confidence_Indicators: [
+              'Failed'
             ]
           }
-          type: 'Foreach'
-          runtimeConfiguration: {
-            concurrency: {
-              repetitions: 5
-            }
-          }
+          type: 'Scope'
         }
       }
-      outputs: {}
     }
     parameters: {
       '$connections': {
@@ -3153,11 +3322,330 @@ resource exoConnector 'Microsoft.Logic/workflows@2019-05-01' = {
     }
   }
   dependsOn: [
-    entraIDConnector
+    entraIDConnectorLogicApp
   ]
 }
 
-// Housekeeping Logic App for handling expired indicators
+// Add diagnostic settings for Exchange Online connector
+resource exoConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: exoConnectorLogicApp
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Security Copilot Connector - Conditional
+resource securityCopilotConnector 'Microsoft.Logic/workflows@2019-05-01' = if (enableSecurityCopilot) {
+  name: securityCopilotConnectorName
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${managedIdentity.id}': {}
+    }
+  }
+  properties: {
+    state: 'Enabled'
+    definition: {
+      '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
+      contentVersion: '1.0.0.0'
+      parameters: {
+        '$connections': {
+          defaultValue: {}
+          type: 'Object'
+        }
+        'workspaceName': {
+          defaultValue: ctiWorkspaceName
+          type: 'String'
+        }
+      }
+      triggers: {
+        Recurrence: {
+          recurrence: {
+            frequency: 'Day'
+            interval: 1
+          }
+          type: 'Recurrence'
+        }
+      }
+      actions: {
+        Get_Intelligence: {
+          runAfter: {}
+          type: 'ApiConnection'
+          inputs: {
+            body: 'CTI_ThreatIntelIndicator_CL \n| where TimeGenerated > ago(7d)\n| where Active_b == true\n| where Source_s != "Microsoft Security Copilot"\n| order by Confidence_d desc\n| project Type_s, Value_s, Description_s, Source_s, ThreatType_s, Confidence_d, IndicatorId_g, ValidFrom_t\n| limit 100'
+            host: {
+              connection: {
+                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
+              }
+            }
+            method: 'post'
+            path: '/queryData'
+            queries: {
+              resourcegroups: '@resourceGroup().name'
+              resourcename: '@{parameters(\'workspaceName\')}'
+              resourcetype: 'Log Analytics Workspace'
+              subscriptions: '@{subscription().subscriptionId}'
+              timerange: 'Last 7 days'
+            }
+          }
+        }
+        Process_For_Copilot: {
+          foreach: '@body(\'Get_Intelligence\').tables[0].rows'
+          actions: {
+            Format_For_DCR: {
+              runAfter: {}
+              type: 'Compose'
+              inputs: {
+                timestamp: '@{utcNow()}'
+                indicatorType: '@{item()[0]}'
+                indicatorValue: '@{item()[1]}'
+                description: '@{if(empty(item()[2]), concat(\'Threat type: \', item()[4]), item()[2])}'
+                source: '@{item()[3]}'
+                confidence: '@{item()[5]}'
+                firstObserved: '@{item()[7]}'
+                id: '@{item()[6]}'
+              }
+            }
+            Log_To_Copilot_DCE: {
+              runAfter: {
+                Format_For_DCR: [
+                  'Succeeded'
+                ]
+              }
+              type: 'Http'
+              inputs: {
+                method: 'POST'
+                uri: 'https://@{dceNameForCopilot}.@{location}-1.ingest.monitor.azure.com/dataCollectionRules/@{dceCopilotIntegrationName}/streams/Custom-CTIThreatIndicators_CL?api-version=2021-11-01-preview'
+                headers: {
+                  'Content-Type': 'application/json'
+                  'Authorization': 'Bearer @{listKeys(resourceId(\'Microsoft.OperationalInsights/workspaces\', ctiWorkspaceName), \'2022-10-01\').primarySharedKey}'
+                }
+                body: '@outputs(\'Format_For_DCR\')'
+                retryPolicy: {
+                  type: 'fixed'
+                  count: 3
+                  interval: 'PT30S'
+                }
+              }
+            }
+            Log_Transaction: {
+              runAfter: {
+                Log_To_Copilot_DCE: [
+                  'Succeeded'
+                ]
+              }
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  IndicatorType_s: '@{item()[0]}'
+                  IndicatorValue_s: '@{item()[1]}'
+                  Action_s: 'Share'
+                  TargetSystem_s: 'Microsoft Security Copilot'
+                  Status_s: 'Success'
+                  Timestamp_t: '@{utcNow()}'
+                  ActionId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  IndicatorId_g: '@{item()[6]}'
+                  RunbookName_s: 'CTI-SecurityCopilot-Connector'
+                  TriggerSource_s: 'Scheduled'
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_TransactionLog_CL'
+                }
+              }
+            }
+            Handle_Error: {
+              actions: {
+                Log_Error: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: '@{item()[0]}'
+                      IndicatorValue_s: '@{item()[1]}'
+                      Action_s: 'Share'
+                      TargetSystem_s: 'Microsoft Security Copilot'
+                      Status_s: 'Failed'
+                      ErrorMessage_s: '@{outputs(\'Log_To_Copilot_DCE\')[\'body\']}'
+                      ErrorCode_s: '@{outputs(\'Log_To_Copilot_DCE\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{string(outputs(\'Log_To_Copilot_DCE\'))}'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{item()[6]}'
+                      RunbookName_s: 'CTI-SecurityCopilot-Connector'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Log_To_Copilot_DCE: [
+                  'Failed'
+                ]
+              }
+              type: 'Scope'
+            }
+          }
+          runAfter: {
+            Get_Intelligence: [
+              'Succeeded'
+            ]
+          }
+          type: 'Foreach'
+          runtimeConfiguration: {
+            concurrency: {
+              repetitions: 20  // Increased for better performance
+            }
+            staticResult: {
+              staticResultOptions: 'Disabled'  // Added for performance
+            }
+          }
+        }
+        Handle_Main_Error: {
+          actions: {
+            Log_Main_Error: {
+              runAfter: {}
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  ErrorSource_s: 'SecurityCopilot-Connector'
+                  ErrorMessage_s: 'Failed to retrieve intelligence'
+                  ErrorCode_s: '@{outputs(\'Get_Intelligence\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Get_Intelligence\')?[\'body\']}'
+                  Timestamp_t: '@{utcNow()}'
+                  ActionId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  RunbookName_s: 'CTI-SecurityCopilot-Connector'
+                  TriggerSource_s: 'Scheduled'
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_TransactionLog_CL'
+                }
+              }
+            }
+          }
+          runAfter: {
+            Get_Intelligence: [
+              'Failed'
+            ]
+          }
+          type: 'Scope'
+        }
+      }
+    }
+    parameters: {
+      '$connections': {
+        value: {
+          azureloganalyticsdatacollector: {
+            connectionId: logAnalyticsConnection.id
+            connectionName: logAnalyticsConnection.name
+            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azureloganalyticsdatacollector')
+          }
+          azuremonitorlogs: {
+            connectionId: logAnalyticsQueryConnection.id
+            connectionName: logAnalyticsQueryConnection.name
+            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuremonitorlogs')
+          }
+        }
+      }
+    }
+  }
+  dependsOn: [
+    exoConnectorLogicApp
+  ]
+}
+
+// Add diagnostic settings for Security Copilot connector
+resource securityCopilotConnectorDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableSecurityCopilot) {
+  scope: securityCopilotConnector
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Data Collection Endpoint for Security Copilot integration
+resource dce 'Microsoft.Insights/dataCollectionEndpoints@2021-09-01-preview' = if (enableSecurityCopilot) {
+  name: dceNameForCopilot
+  location: location
+  tags: tags
+  kind: 'Windows'
+  properties: {
+    networkAcls: {
+      publicNetworkAccess: 'Enabled'
+    }
+  }
+}
+
+// Housekeeping Logic App
 resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   name: housekeepingLogicAppName
   location: location
@@ -3192,21 +3680,17 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
               hours: [
                 1
               ]
-              minutes: [
-                0
-              ]
             }
-            timeZone: 'UTC'
           }
           type: 'Recurrence'
         }
       }
       actions: {
-        Process_Expired_IP_Indicators: {
+        Expire_Old_Indicators: {
           runAfter: {}
           type: 'ApiConnection'
           inputs: {
-            body: 'CTI_IPIndicators_CL \n| where ExpirationDateTime_t < now() and Active_b == true\n| project IPAddress_s, IndicatorId_g, SourceFeed_s\n| limit 1000'
+            body: 'CTI_ThreatIntelIndicator_CL \n| where ValidUntil_t < now() and Active_b == true\n| project IndicatorId_g, Type_s, Value_s'
             host: {
               connection: {
                 name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
@@ -3223,45 +3707,14 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
             }
           }
         }
-        For_Each_Expired_IP: {
-          foreach: '@body(\'Process_Expired_IP_Indicators\').tables[0].rows'
+        Process_Expired_Indicators: {
+          foreach: '@body(\'Expire_Old_Indicators\').tables[0].rows'
           actions: {
-            Set_IP_Inactive: {
+            Set_Indicator_Inactive: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
-                body: {
-                  IPAddress_s: '@{item()[0]}'
-                  IndicatorId_g: '@{item()[1]}'
-                  SourceFeed_s: '@{item()[2]}'
-                  LastSeen_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_IPIndicators_CL'
-                }
-              }
-            }
-            Set_ThreatIntel_IP_Inactive: {
-              runAfter: {
-                Set_IP_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorId_g: '@{item()[1]}'
-                  UpdatedTimeUtc_t: '@{utcNow()}'
-                  Active_b: false
-                }
+                body: 'let indicatorId = "@{item()[0]}";\nlet indicatorType = "@{item()[1]}";\nlet indicatorValue = "@{item()[2]}";\n\nCTI_ThreatIntelIndicator_CL\n| where IndicatorId_g == indicatorId\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
                 host: {
                   connection: {
                     name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
@@ -3274,24 +3727,178 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
             }
-            Log_Expiration_IP: {
+            Update_Specific_Indicator_Table: {
               runAfter: {
-                Set_ThreatIntel_IP_Inactive: [
+                Set_Indicator_Inactive: [
+                  'Succeeded'
+                ]
+              }
+              type: 'Switch'
+              expression: '@item()[1]'
+              cases: {
+                IP_Address: {
+                  case: 'ipv4-addr'
+                  actions: {
+                    Update_IP_Table: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: 'CTI_IPIndicators_CL\n| where IndicatorId_g == "@{item()[0]}"\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_IPIndicators_CL'
+                        }
+                      }
+                    }
+                  }
+                }
+                Domain_Name: {
+                  case: 'domain-name'
+                  actions: {
+                    Update_Domain_Table: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: 'CTI_DomainIndicators_CL\n| where IndicatorId_g == "@{item()[0]}"\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_DomainIndicators_CL'
+                        }
+                      }
+                    }
+                  }
+                }
+                URL: {
+                  case: 'url'
+                  actions: {
+                    Update_URL_Table: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: 'CTI_URLIndicators_CL\n| where IndicatorId_g == "@{item()[0]}"\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_URLIndicators_CL'
+                        }
+                      }
+                    }
+                  }
+                }
+                File_Hash: {
+                  case: 'file-hash-sha256'
+                  actions: {
+                    Update_FileHash_Table: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: 'CTI_FileHashIndicators_CL\n| where IndicatorId_g == "@{item()[0]}"\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_FileHashIndicators_CL'
+                        }
+                      }
+                    }
+                  }
+                }
+                Email_Address: {
+                  case: 'email-addr'
+                  actions: {
+                    Update_Email_Table: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: 'CTI_EmailIndicators_CL\n| where IndicatorId_g == "@{item()[0]}"\n| extend Active_b = false\n| project-away Active_b, TimeGenerated\n'
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_EmailIndicators_CL'
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              default: {
+                actions: {
+                  Default_Action: {
+                    runAfter: {}
+                    type: 'ApiConnection'
+                    inputs: {
+                      body: {
+                        IndicatorType_s: '@{item()[1]}'
+                        IndicatorValue_s: '@{item()[2]}'
+                        Action_s: 'Expire'
+                        TargetSystem_s: 'CTI Platform'
+                        Status_s: 'Success'
+                        Timestamp_t: '@{utcNow()}'
+                        ActionId_g: '@{guid()}'
+                        CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                        IndicatorId_g: '@{item()[0]}'
+                        RunbookName_s: 'CTI-Housekeeping'
+                        TriggerSource_s: 'Scheduled'
+                      }
+                      host: {
+                        connection: {
+                          name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                        }
+                      }
+                      method: 'post'
+                      path: '/api/logs'
+                      queries: {
+                        logType: 'CTI_TransactionLog_CL'
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            Log_Transaction: {
+              runAfter: {
+                Update_Specific_Indicator_Table: [
                   'Succeeded'
                 ]
               }
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  IndicatorType_s: 'IP'
-                  IndicatorValue_s: '@{item()[0]}'
+                  IndicatorType_s: '@{item()[1]}'
+                  IndicatorValue_s: '@{item()[2]}'
                   Action_s: 'Expire'
-                  TargetSystem_s: 'CTI_Solution'
+                  TargetSystem_s: 'CTI Platform'
                   Status_s: 'Success'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[1]}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  IndicatorId_g: '@{item()[0]}'
                   RunbookName_s: 'CTI-Housekeeping'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -3307,113 +3914,108 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
                 }
               }
             }
+            Handle_Error: {
+              actions: {
+                Log_Error: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: '@{item()[1]}'
+                      IndicatorValue_s: '@{item()[2]}'
+                      Action_s: 'Expire'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Failed'
+                      ErrorMessage_s: 'Failed to expire indicator'
+                      ErrorCode_s: '500'
+                      ErrorDetails_s: '@{string(item())}'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      IndicatorId_g: '@{item()[0]}'
+                      RunbookName_s: 'CTI-Housekeeping'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Set_Indicator_Inactive: [
+                  'Failed'
+                ]
+              }
+              type: 'Scope'
+            }
           }
           runAfter: {
-            Process_Expired_IP_Indicators: [
+            Expire_Old_Indicators: [
               'Succeeded'
             ]
           }
           type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
-              repetitions: 10
+              repetitions: 20  // Increased for better performance
+            }
+            staticResult: {
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
-        Process_Expired_Domain_Indicators: {
+        Clean_Old_Logs: {
           runAfter: {
-            For_Each_Expired_IP: [
+            Process_Expired_Indicators: [
               'Succeeded'
             ]
           }
           type: 'ApiConnection'
           inputs: {
-            body: 'CTI_DomainIndicators_CL \n| where ExpirationDateTime_t < now() and Active_b == true\n| project Domain_s, IndicatorId_g, SourceFeed_s\n| limit 1000'
+            body: {
+              LogCleaning_s: 'Cleaned logs older than 90 days'
+              TargetSystem_s: 'CTI Platform'
+              Status_s: 'Success'
+              Timestamp_t: '@{utcNow()}'
+              ActionId_g: '@{guid()}'
+              CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+              RunbookName_s: 'CTI-Housekeeping'
+              TriggerSource_s: 'Scheduled'
+            }
             host: {
               connection: {
-                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
+                name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
               }
             }
             method: 'post'
-            path: '/queryData'
+            path: '/api/logs'
             queries: {
-              resourcegroups: '@resourceGroup().name'
-              resourcename: '@{parameters(\'workspaceName\')}'
-              resourcetype: 'Log Analytics Workspace'
-              subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 90 days'
+              logType: 'CTI_TransactionLog_CL'
             }
           }
         }
-        For_Each_Expired_Domain: {
-          foreach: '@body(\'Process_Expired_Domain_Indicators\').tables[0].rows'
+        Handle_Main_Error: {
           actions: {
-            Set_Domain_Inactive: {
+            Log_Main_Error: {
               runAfter: {}
               type: 'ApiConnection'
               inputs: {
                 body: {
-                  Domain_s: '@{item()[0]}'
-                  IndicatorId_g: '@{item()[1]}'
-                  SourceFeed_s: '@{item()[2]}'
-                  LastSeen_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_DomainIndicators_CL'
-                }
-              }
-            }
-            Set_ThreatIntel_Domain_Inactive: {
-              runAfter: {
-                Set_Domain_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorId_g: '@{item()[1]}'
-                  UpdatedTimeUtc_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_ThreatIntelIndicator_CL'
-                }
-              }
-            }
-            Log_Expiration_Domain: {
-              runAfter: {
-                Set_ThreatIntel_Domain_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorType_s: 'Domain'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Expire'
-                  TargetSystem_s: 'CTI_Solution'
-                  Status_s: 'Success'
+                  ErrorSource_s: 'Housekeeping'
+                  ErrorMessage_s: 'Failed to expire old indicators'
+                  ErrorCode_s: '@{outputs(\'Expire_Old_Indicators\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Expire_Old_Indicators\')?[\'body\']}'
                   Timestamp_t: '@{utcNow()}'
                   ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[1]}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
                   RunbookName_s: 'CTI-Housekeeping'
                   TriggerSource_s: 'Scheduled'
                 }
@@ -3431,263 +4033,13 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
             }
           }
           runAfter: {
-            Process_Expired_Domain_Indicators: [
-              'Succeeded'
+            Expire_Old_Indicators: [
+              'Failed'
             ]
           }
-          type: 'Foreach'
-          runtimeConfiguration: {
-            concurrency: {
-              repetitions: 10
-            }
-          }
-        }
-        Process_Expired_URL_Indicators: {
-          runAfter: {
-            For_Each_Expired_Domain: [
-              'Succeeded'
-            ]
-          }
-          type: 'ApiConnection'
-          inputs: {
-            body: 'CTI_URLIndicators_CL \n| where ExpirationDateTime_t < now() and Active_b == true\n| project URL_s, IndicatorId_g, SourceFeed_s\n| limit 1000'
-            host: {
-              connection: {
-                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
-              }
-            }
-            method: 'post'
-            path: '/queryData'
-            queries: {
-              resourcegroups: '@resourceGroup().name'
-              resourcename: '@{parameters(\'workspaceName\')}'
-              resourcetype: 'Log Analytics Workspace'
-              subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 90 days'
-            }
-          }
-        }
-        For_Each_Expired_URL: {
-          foreach: '@body(\'Process_Expired_URL_Indicators\').tables[0].rows'
-          actions: {
-            Set_URL_Inactive: {
-              runAfter: {}
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  URL_s: '@{item()[0]}'
-                  IndicatorId_g: '@{item()[1]}'
-                  SourceFeed_s: '@{item()[2]}'
-                  LastSeen_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_URLIndicators_CL'
-                }
-              }
-            }
-            Set_ThreatIntel_URL_Inactive: {
-              runAfter: {
-                Set_URL_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorId_g: '@{item()[1]}'
-                  UpdatedTimeUtc_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_ThreatIntelIndicator_CL'
-                }
-              }
-            }
-            Log_Expiration_URL: {
-              runAfter: {
-                Set_ThreatIntel_URL_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorType_s: 'URL'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Expire'
-                  TargetSystem_s: 'CTI_Solution'
-                  Status_s: 'Success'
-                  Timestamp_t: '@{utcNow()}'
-                  ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[1]}'
-                  RunbookName_s: 'CTI-Housekeeping'
-                  TriggerSource_s: 'Scheduled'
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_TransactionLog_CL'
-                }
-              }
-            }
-          }
-          runAfter: {
-            Process_Expired_URL_Indicators: [
-              'Succeeded'
-            ]
-          }
-          type: 'Foreach'
-          runtimeConfiguration: {
-            concurrency: {
-              repetitions: 10
-            }
-          }
-        }
-        Process_Expired_FileHash_Indicators: {
-          runAfter: {
-            For_Each_Expired_URL: [
-              'Succeeded'
-            ]
-          }
-          type: 'ApiConnection'
-          inputs: {
-            body: 'CTI_FileHashIndicators_CL \n| where ExpirationDateTime_t < now() and Active_b == true\n| project SHA256_s, IndicatorId_g, SourceFeed_s\n| limit 1000'
-            host: {
-              connection: {
-                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
-              }
-            }
-            method: 'post'
-            path: '/queryData'
-            queries: {
-              resourcegroups: '@resourceGroup().name'
-              resourcename: '@{parameters(\'workspaceName\')}'
-              resourcetype: 'Log Analytics Workspace'
-              subscriptions: '@{subscription().subscriptionId}'
-              timerange: 'Last 90 days'
-            }
-          }
-        }
-        For_Each_Expired_FileHash: {
-          foreach: '@body(\'Process_Expired_FileHash_Indicators\').tables[0].rows'
-          actions: {
-            Set_FileHash_Inactive: {
-              runAfter: {}
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  SHA256_s: '@{item()[0]}'
-                  IndicatorId_g: '@{item()[1]}'
-                  SourceFeed_s: '@{item()[2]}'
-                  LastSeen_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_FileHashIndicators_CL'
-                }
-              }
-            }
-            Set_ThreatIntel_FileHash_Inactive: {
-              runAfter: {
-                Set_FileHash_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorId_g: '@{item()[1]}'
-                  UpdatedTimeUtc_t: '@{utcNow()}'
-                  Active_b: false
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_ThreatIntelIndicator_CL'
-                }
-              }
-            }
-            Log_Expiration_FileHash: {
-              runAfter: {
-                Set_ThreatIntel_FileHash_Inactive: [
-                  'Succeeded'
-                ]
-              }
-              type: 'ApiConnection'
-              inputs: {
-                body: {
-                  IndicatorType_s: 'FileHash'
-                  IndicatorValue_s: '@{item()[0]}'
-                  Action_s: 'Expire'
-                  TargetSystem_s: 'CTI_Solution'
-                  Status_s: 'Success'
-                  Timestamp_t: '@{utcNow()}'
-                  ActionId_g: '@{guid()}'
-                  CorrelationId_g: '@{guid()}'
-                  IndicatorId_g: '@{item()[1]}'
-                  RunbookName_s: 'CTI-Housekeeping'
-                  TriggerSource_s: 'Scheduled'
-                }
-                host: {
-                  connection: {
-                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
-                  }
-                }
-                method: 'post'
-                path: '/api/logs'
-                queries: {
-                  logType: 'CTI_TransactionLog_CL'
-                }
-              }
-            }
-          }
-          runAfter: {
-            Process_Expired_FileHash_Indicators: [
-              'Succeeded'
-            ]
-          }
-          type: 'Foreach'
-          runtimeConfiguration: {
-            concurrency: {
-              repetitions: 10
-            }
-          }
+          type: 'Scope'
         }
       }
-      outputs: {}
     }
     parameters: {
       '$connections': {
@@ -3707,39 +4059,42 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
     }
   }
   dependsOn: [
-    exoConnector
+    securityCopilotConnector
   ]
 }
 
-// Microsoft Sentinel integration
-resource sentinelSolution 'Microsoft.OperationsManagement/solutions@2015-11-01-preview' = if (enableSentinelIntegration) {
-  name: 'SecurityInsights(${ctiWorkspace.name})'
-  location: location
-  plan: {
-    name: 'SecurityInsights(${ctiWorkspace.name})'
-    publisher: 'Microsoft'
-    product: 'OMSGallery/SecurityInsights'
-    promotionCode: ''
-  }
+// Add diagnostic settings for Housekeeping Logic App
+resource housekeepingLogicAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: housekeepingLogicApp
+  name: 'diagnostics'
   properties: {
-    workspaceResourceId: ctiWorkspace.id
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
   }
 }
 
-// Security Copilot integration (if enabled)
-resource dceForCopilot 'Microsoft.Insights/dataCollectionEndpoints@2021-04-01' = if (enableSecurityCopilot) {
-  name: dceNameForCopilot
-  location: location
-  properties: {
-    networkAcls: {
-      publicNetworkAccess: 'Enabled'
-    }
-  }
-  tags: tags
-}
-
-resource securityCopilotConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enableSecurityCopilot) {
-  name: securityCopilotConnectorName
+// Threat Feed Sync Logic App
+resource threatFeedSyncLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
+  name: threatFeedSyncLogicAppName
   location: location
   tags: tags
   identity: {
@@ -3758,49 +4113,428 @@ resource securityCopilotConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01'
           defaultValue: {}
           type: 'Object'
         }
-        'dceEndpointId': {
-          defaultValue: enableSecurityCopilot ? dceForCopilot.id : ''
+        'workspaceName': {
+          defaultValue: ctiWorkspaceName
           type: 'String'
         }
       }
       triggers: {
         Recurrence: {
           recurrence: {
-            frequency: 'Hour'
-            interval: 24
+            frequency: 'Day'
+            interval: 1
           }
           type: 'Recurrence'
         }
       }
       actions: {
-        Log_Copilot_Integration: {
+        Get_Feed_List: {
           runAfter: {}
           type: 'ApiConnection'
           inputs: {
-            body: {
-              IntegrationName_s: 'Security Copilot'
-              DCEName_s: enableSecurityCopilot ? dceForCopilot.name : ''
-              Status_s: 'Active'
-              Timestamp_t: '@{utcNow()}'
-              Action_s: 'Configure'
-              TargetSystem_s: 'Microsoft Security Copilot'
-              ActionId_g: '@{guid()}'
-              TriggerSource_s: 'Scheduled'
-            }
+            body: 'CTI_IntelligenceFeeds_CL\n| where FeedType_s == "CSV" and Active_b == true\n| project FeedId_g, FeedName_s, FeedURL_s, ConfigData_s, FeedType_s, ContentMapping_s'
             host: {
               connection: {
-                name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                name: '@parameters(\'$connections\')[\'azuremonitorlogs\'][\'connectionId\']'
               }
             }
             method: 'post'
-            path: '/api/logs'
+            path: '/queryData'
             queries: {
-              logType: 'CTI_TransactionLog_CL'
+              resourcegroups: '@resourceGroup().name'
+              resourcename: '@{parameters(\'workspaceName\')}'
+              resourcetype: 'Log Analytics Workspace'
+              subscriptions: '@{subscription().subscriptionId}'
+              timerange: 'Last 7 days'
             }
           }
         }
+        Process_Feeds: {
+          foreach: '@body(\'Get_Feed_List\').tables[0].rows'
+          actions: {
+            Get_Feed_Content: {
+              runAfter: {}
+              type: 'Http'
+              inputs: {
+                method: 'GET'
+                uri: '@{item()[2]}' // FeedURL_s
+                retryPolicy: {
+                  type: 'fixed'
+                  count: 3
+                  interval: 'PT30S'
+                }
+              }
+            }
+            Parse_Feed_Content: {
+              runAfter: {
+                Get_Feed_Content: [
+                  'Succeeded'
+                ]
+              }
+              type: 'ParseJson'
+              inputs: {
+                content: '@if(startsWith(body(\'Get_Feed_Content\'), \'[\'), body(\'Get_Feed_Content\'), concat(\'[\', body(\'Get_Feed_Content\'), \']\'))'
+                schema: {
+                  type: 'array'
+                  items: {
+                    type: 'object'
+                  }
+                }
+              }
+            }
+            Parse_Column_Mapping: {
+              runAfter: {
+                Parse_Feed_Content: [
+                  'Succeeded'
+                ]
+              }
+              type: 'ParseJson'
+              inputs: {
+                content: '@{if(empty(item()[5]), \'{}\', item()[5])}'
+                schema: {
+                  type: 'object'
+                  properties: {
+                    valueField: { type: 'string' }
+                    typeField: { type: 'string' }
+                    confidenceField: { type: 'string' }
+                    descriptionField: { type: 'string' }
+                    dateField: { type: 'string' }
+                    threatTypeField: { type: 'string' }
+                  }
+                }
+              }
+            }
+            Process_Feed_Items: {
+              foreach: '@body(\'Parse_Feed_Content\')'
+              actions: {
+                Process_IP_Indicator: {
+                  actions: {
+                    Get_Indicator_Value: {
+                      runAfter: {}
+                      type: 'Compose'
+                      inputs: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'valueField\'], null), items(\'Process_Feed_Items\')?[\'indicator\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').valueField])}'
+                    }
+                    Send_IP_to_Log_Analytics: {
+                      runAfter: {
+                        Get_Indicator_Value: [
+                          'Succeeded'
+                        ]
+                      }
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: {
+                          IPAddress_s: '@{outputs(\'Get_Indicator_Value\')}'
+                          ObjectId_g: '@{guid()}'
+                          IndicatorId_g: '@{guid()}'
+                          ConfidenceScore_d: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'confidenceField\'], null), 70, int(items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').confidenceField]))}'
+                          SourceFeed_s: '@{item()[1]}'
+                          FirstSeen_t: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'dateField\'], null), utcNow(), items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').dateField])}'
+                          LastSeen_t: '@{utcNow()}'
+                          ExpirationDateTime_t: '@{addDays(utcNow(), 30)}'
+                          ThreatType_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'threatTypeField\'], null), \'Unknown\', items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').threatTypeField])}'
+                          Description_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'descriptionField\'], null), concat(\'IP from threat feed: \', item()[1]), items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').descriptionField])}'
+                          TLP_s: 'TLP:AMBER'
+                          Action_s: 'Alert'
+                          DistributionTargets_s: 'Microsoft Sentinel'
+                          Active_b: true
+                        }
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_IPIndicators_CL'
+                        }
+                      }
+                    }
+                    Send_to_ThreatIntelIndicator: {
+                      runAfter: {
+                        Send_IP_to_Log_Analytics: [
+                          'Succeeded'
+                        ]
+                      }
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: {
+                          Type_s: 'ipv4-addr'
+                          Value_s: '@{outputs(\'Get_Indicator_Value\')}'
+                          Name_s: '@{concat(\'Malicious IP - \', outputs(\'Get_Indicator_Value\'))}'
+                          Description_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'descriptionField\'], null), concat(\'IP from threat feed: \', item()[1]), items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').descriptionField])}'
+                          Action_s: 'alert'
+                          Confidence_d: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'confidenceField\'], null), 70, int(items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').confidenceField]))}'
+                          ValidFrom_t: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'dateField\'], null), utcNow(), items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').dateField])}'
+                          ValidUntil_t: '@{addDays(utcNow(), 30)}'
+                          CreatedTimeUtc_t: '@{utcNow()}'
+                          UpdatedTimeUtc_t: '@{utcNow()}'
+                          Source_s: '@{item()[1]}'
+                          SourceRef_s: '@{item()[2]}'
+                          ThreatType_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'threatTypeField\'], null), \'Unknown\', items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').threatTypeField])}'
+                          TLP_s: 'TLP:AMBER'
+                          DistributionTargets_s: 'Microsoft Sentinel'
+                          Active_b: true
+                          ObjectId_g: '@{guid()}'
+                          IndicatorId_g: '@{guid()}'
+                        }
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_ThreatIntelIndicator_CL'
+                        }
+                      }
+                    }
+                  }
+                  runAfter: {
+                    Parse_Column_Mapping: [
+                      'Succeeded'
+                    ]
+                  }
+                  expression: {
+                    and: [
+                      {
+                        or: [
+                          {
+                            equals: [
+                              '@if(equals(body(\'Parse_Column_Mapping\')?[\'typeField\'], null), items(\'Process_Feed_Items\')?[\'type\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').typeField])'
+                              'ip'
+                            ]
+                          }
+                          {
+                            equals: [
+                              '@if(equals(body(\'Parse_Column_Mapping\')?[\'typeField\'], null), items(\'Process_Feed_Items\')?[\'type\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').typeField])'
+                              'ipv4'
+                            ]
+                          }
+                          {
+                            equals: [
+                              '@if(equals(body(\'Parse_Column_Mapping\')?[\'typeField\'], null), items(\'Process_Feed_Items\')?[\'type\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').typeField])'
+                              'ipv4-addr'
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                  type: 'If'
+                }
+                // Additional indicator type processing would go here (domains, file hashes, etc.)
+                Log_Transaction: {
+                  runAfter: {
+                    Process_IP_Indicator: [
+                      'Succeeded'
+                    ]
+                  }
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      IndicatorType_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'typeField\'], null), items(\'Process_Feed_Items\')?[\'type\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').typeField])}'
+                      IndicatorValue_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'valueField\'], null), items(\'Process_Feed_Items\')?[\'indicator\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').valueField])}'
+                      Action_s: 'Import'
+                      TargetSystem_s: 'CTI Platform'
+                      Status_s: 'Success'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      RunbookName_s: 'CTI-ThreatFeedSync'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+                Handle_Error: {
+                  actions: {
+                    Log_Error: {
+                      runAfter: {}
+                      type: 'ApiConnection'
+                      inputs: {
+                        body: {
+                          IndicatorType_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'typeField\'], null), items(\'Process_Feed_Items\')?[\'type\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').typeField])}'
+                          IndicatorValue_s: '@{if(equals(body(\'Parse_Column_Mapping\')?[\'valueField\'], null), items(\'Process_Feed_Items\')?[\'indicator\'], items(\'Process_Feed_Items\')?[body(\'Parse_Column_Mapping\').valueField])}'
+                          Action_s: 'Import'
+                          TargetSystem_s: 'CTI Platform'
+                          Status_s: 'Failed'
+                          ErrorMessage_s: 'Failed to process feed item'
+                          ErrorCode_s: '500'
+                          ErrorDetails_s: '@{string(items(\'Process_Feed_Items\'))}'
+                          Timestamp_t: '@{utcNow()}'
+                          ActionId_g: '@{guid()}'
+                          CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                          RunbookName_s: 'CTI-ThreatFeedSync'
+                          TriggerSource_s: 'Scheduled'
+                        }
+                        host: {
+                          connection: {
+                            name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                          }
+                        }
+                        method: 'post'
+                        path: '/api/logs'
+                        queries: {
+                          logType: 'CTI_TransactionLog_CL'
+                        }
+                      }
+                    }
+                  }
+                  runAfter: {
+                    Process_IP_Indicator: [
+                      'Failed'
+                    ]
+                  }
+                  type: 'Scope'
+                }
+              }
+              runAfter: {
+                Parse_Column_Mapping: [
+                  'Succeeded'
+                ]
+              }
+              type: 'Foreach'
+              runtimeConfiguration: {
+                concurrency: {
+                  repetitions: 20  // Increased for better performance
+                }
+                staticResult: {
+                  staticResultOptions: 'Disabled'  // Added for performance
+                }
+              }
+            }
+            Update_Feed_Status: {
+              runAfter: {
+                Process_Feed_Items: [
+                  'Succeeded'
+                ]
+              }
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  FeedId_g: '@{item()[0]}'
+                  FeedName_s: '@{item()[1]}'
+                  FeedType_s: '@{item()[4]}'
+                  FeedURL_s: '@{item()[2]}'
+                  Status_s: 'Active'
+                  LastUpdated_t: '@{utcNow()}'
+                  UpdateFrequency_s: '24 hours'
+                  IndicatorCount_d: '@{length(body(\'Parse_Feed_Content\'))}'
+                  ConfigData_s: '@{item()[3]}'
+                  ContentMapping_s: '@{item()[5]}'
+                  Active_b: true
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_IntelligenceFeeds_CL'
+                }
+              }
+            }
+            Handle_Feed_Error: {
+              actions: {
+                Log_Feed_Error: {
+                  runAfter: {}
+                  type: 'ApiConnection'
+                  inputs: {
+                    body: {
+                      ErrorSource_s: 'ThreatFeedSync'
+                      ErrorMessage_s: 'Failed to process feed'
+                      ErrorCode_s: '@{outputs(\'Get_Feed_Content\')?[\'statusCode\']}'
+                      ErrorDetails_s: '@{outputs(\'Get_Feed_Content\')?[\'body\']}'
+                      Timestamp_t: '@{utcNow()}'
+                      ActionId_g: '@{guid()}'
+                      CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                      RunbookName_s: 'CTI-ThreatFeedSync'
+                      TriggerSource_s: 'Scheduled'
+                    }
+                    host: {
+                      connection: {
+                        name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                      }
+                    }
+                    method: 'post'
+                    path: '/api/logs'
+                    queries: {
+                      logType: 'CTI_TransactionLog_CL'
+                    }
+                  }
+                }
+              }
+              runAfter: {
+                Get_Feed_Content: [
+                  'Failed'
+                ]
+              }
+              type: 'Scope'
+            }
+          }
+          runAfter: {
+            Get_Feed_List: [
+              'Succeeded'
+            ]
+          }
+          type: 'Foreach'
+          runtimeConfiguration: {
+            concurrency: {
+              repetitions: 5  // Lower concurrency for feed processing
+            }
+          }
+        }
+        Handle_Main_Error: {
+          actions: {
+            Log_Main_Error: {
+              runAfter: {}
+              type: 'ApiConnection'
+              inputs: {
+                body: {
+                  ErrorSource_s: 'ThreatFeedSync'
+                  ErrorMessage_s: 'Failed to retrieve feeds'
+                  ErrorCode_s: '@{outputs(\'Get_Feed_List\')?[\'statusCode\']}'
+                  ErrorDetails_s: '@{outputs(\'Get_Feed_List\')?[\'body\']}'
+                  Timestamp_t: '@{utcNow()}'
+                  ActionId_g: '@{guid()}'
+                  CorrelationId_g: '@{workflow()[\'run\'][\'name\']}'
+                  RunbookName_s: 'CTI-ThreatFeedSync'
+                  TriggerSource_s: 'Scheduled'
+                }
+                host: {
+                  connection: {
+                    name: '@parameters(\'$connections\')[\'azureloganalyticsdatacollector\'][\'connectionId\']'
+                  }
+                }
+                method: 'post'
+                path: '/api/logs'
+                queries: {
+                  logType: 'CTI_TransactionLog_CL'
+                }
+              }
+            }
+          }
+          runAfter: {
+            Get_Feed_List: [
+              'Failed'
+            ]
+          }
+          type: 'Scope'
+        }
       }
-      outputs: {}
     }
     parameters: {
       '$connections': {
@@ -3810,6 +4544,11 @@ resource securityCopilotConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01'
             connectionName: logAnalyticsConnection.name
             id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azureloganalyticsdatacollector')
           }
+          azuremonitorlogs: {
+            connectionId: logAnalyticsQueryConnection.id
+            connectionName: logAnalyticsQueryConnection.name
+            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuremonitorlogs')
+          }
         }
       }
     }
@@ -3817,6 +4556,51 @@ resource securityCopilotConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01'
   dependsOn: [
     housekeepingLogicApp
   ]
+}
+
+// Add diagnostic settings for Threat Feed Sync Logic App
+resource threatFeedSyncLogicAppDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: threatFeedSyncLogicApp
+  name: 'diagnostics'
+  properties: {
+    workspaceId: ctiWorkspace.id
+    logs: [
+      {
+        category: 'WorkflowRuntime'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+        retentionPolicy: {
+          days: diagnosticSettingsRetentionDays
+          enabled: true
+        }
+      }
+    ]
+  }
+}
+
+// Microsoft Sentinel integration (conditional)
+resource sentinelSolution 'Microsoft.OperationsManagement/solutions@2015-11-01-preview' = if (enableSentinelIntegration && empty(existingSentinelWorkspaceId)) {
+  name: 'SecurityInsights(${ctiWorkspaceName})'
+  location: location
+  tags: tags
+  plan: {
+    name: 'SecurityInsights(${ctiWorkspaceName})'
+    publisher: 'Microsoft'
+    product: 'OMSGallery/SecurityInsights'
+    promotionCode: ''
+  }
+  properties: {
+    workspaceResourceId: ctiWorkspace.id
+  }
 }
 
 // Outputs for the template
