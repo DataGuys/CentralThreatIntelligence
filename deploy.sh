@@ -50,7 +50,7 @@ function log() {
     local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     
     # Convert message to array of lines
-    IFS=$'\n' read -d '' -r -a lines <<< "$message"
+    readarray -t lines <<< "$message"
     
     # Process each line
     for line in "${lines[@]}"; do
