@@ -2151,7 +2151,7 @@ echo "=================================================="
 echo ""
 
 # Check prerequisites
-#check_prerequisites
+check_prerequisites
 
 # Validate Azure subscription
 validate_azure_subscription
