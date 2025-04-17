@@ -26,6 +26,7 @@ ENABLE_MDTI=true
 ENABLE_SECURITY_COPILOT=false
 SKIP_WORKBOOKS=false
 ADVANCED_DEPLOYMENT=false
+REQUIRED_TOOLS=("jq" "az")
 
 # Log function with timestamps
 function log() {
@@ -79,6 +80,19 @@ function display_usage() {
 function check_prerequisites() {
     log "STEP" "Checking prerequisites"
     
+    # Check for required tools
+    for tool in "${REQUIRED_TOOLS[@]}"; do
+        if ! command -v $tool &> /dev/null; then
+            log "ERROR" "$tool is not installed. Please install it before running this script."
+            if [ "$tool" = "jq" ]; then
+                log "INFO" "Install jq: https://stedolan.github.io/jq/download/"
+            elif [ "$tool" = "az" ]; then
+                log "INFO" "Install Azure CLI: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+            fi
+            exit 1
+        fi
+    done
+    
     # Check if running in Azure Cloud Shell
     if [ -z "$AZURE_EXTENSION_DIR" ]; then
         # Only check for Azure CLI if not in Cloud Shell
@@ -94,6 +108,12 @@ function check_prerequisites() {
     if ! az account show &> /dev/null; then
         log "WARNING" "Not logged in to Azure. Please login."
         az login
+    fi
+    
+    # Verify main.bicep exists in the current directory
+    if [ ! -f "main.bicep" ]; then
+        log "ERROR" "main.bicep file not found in the current directory"
+        exit 1
     fi
     
     log "SUCCESS" "Prerequisites check completed"
@@ -217,10 +237,16 @@ function validate_subscription() {
                 log "INFO" "Registering $provider..."
                 az provider register --namespace $provider
                 log "INFO" "Waiting for $provider registration to complete..."
+                
+                # Show progress indicator
+                local dots="...."
+                local i=0
                 while [[ "$(az provider show --namespace $provider --query "registrationState" -o tsv 2>/dev/null)" != "Registered" ]]; do
-                    log "INFO" "Still waiting for $provider registration..."
-                    sleep 10
+                    printf "\r%s Waiting for registration%s" "$provider" "${dots:0:$i}"
+                    ((i=(i+1)%5))
+                    sleep 5
                 done
+                echo ""
                 log "SUCCESS" "$provider registered successfully"
             done
         fi
@@ -349,12 +375,6 @@ function deploy_bicep_template() {
     # Create a deployment name with timestamp
     DEPLOYMENT_NAME="CTI-Deployment-$(date +%Y%m%d%H%M%S)"
     BICEP_FILE="main.bicep"
-    
-    # Check if Bicep file exists
-    if [ ! -f "$BICEP_FILE" ]; then
-        log "ERROR" "Bicep template file $BICEP_FILE not found"
-        exit 1
-    fi
     
     # Create a temporary parameters file
     TEMP_PARAMS_FILE=$(mktemp)
@@ -490,7 +510,12 @@ EOF
 }
 EOF
 
-    log "INFO" "Deployment information saved to .cti/deployment-info.json"
+    # Create directory with permission check
+    if ! mkdir -p .cti 2>/dev/null; then
+        log "WARNING" "Could not create .cti directory for storing deployment information"
+    else
+        log "INFO" "Deployment information saved to .cti/deployment-info.json"
+    fi
 }
 
 # Function to display next steps
