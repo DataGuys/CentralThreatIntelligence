@@ -73,15 +73,28 @@ echo "APP_NAME=${APP_NAME}" >> cti-app-credentials.env
 
 echo -e "${BLUE}Adding required API permissions...${NC}"
 
+# Microsoft Threat Protection (Indicator.ReadWrite.All)
 echo "Adding Microsoft Threat Protection permissions..."
-az ad app permission add --id "$APP_ID" --api 8ee8fdad-f234-4243-8f3b-15c294843740 --api-permissions e63268a5-313a-4f9d-9b1e-93bd8d49f818=Role > /dev/null 2>&1
+az ad app permission add --id "$APP_ID" \
+  --api 8ee8fdad-f234-4243-8f3b-15c294843740 \
+  --api-permissions e63268a5-313a-4f9d-9b1e-93bd8d49f818=Role > /dev/null 2>&1
 
+# Microsoft Graph (IdentityRiskyUser.ReadWrite.All)
 echo "Adding Microsoft Graph permissions..."
-az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 594c1fb6-4f81-4475-ae41-0c394909246c=Role > /dev/null 2>&1
-az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 5ac13192-7ace-4fcf-b828-1a26f28068ee=Role > /dev/null 2>&1
+az ad app permission add --id "$APP_ID" \
+  --api 00000003-0000-0000-c000-000000000000 \
+  --api-permissions 594c1fb6-4f81-4475-ae41-0c394909246c=Role > /dev/null 2>&1
 
+# Microsoft Graph (Policy.ReadWrite.ConditionalAccess)
+az ad app permission add --id "$APP_ID" \
+  --api 00000003-0000-0000-c000-000000000000 \
+  --api-permissions 5ac13192-7ace-4fcf-b828-1a26f28068ee=Role > /dev/null 2>&1
+
+# Office 365 Exchange Online (Exchange.ManageAsApp)
 echo "Adding Office 365 Exchange Online permissions..."
-az ad app permission add --id "$APP_ID" --api 00000002-0000-0ff1-ce00-000000000000 --api-permissions 7f06df7a-86b2-4c6f-9e5b-a5be1a6469a8=Role > /dev/null 2>&1
+az ad app permission add --id "$APP_ID" \
+  --api 00000002-0000-0ff1-ce00-000000000000 \
+  --api-permissions dc50a0fb-09a3-484d-be87-e023b12c6440=Role > /dev/null 2>&1
 
 echo -e "${GREEN}API permissions added successfully.${NC}"
 echo -e "${YELLOW}Note: An administrator must grant admin consent for these permissions.${NC}"
