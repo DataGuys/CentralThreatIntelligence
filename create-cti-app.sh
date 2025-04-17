@@ -1,5 +1,5 @@
 #!/bin/bash
-# CTI App Registration Script
+# CTI App Registration Script with corrected Microsoft Graph API permissions
 set -e
 
 # Color definitions for output
@@ -73,28 +73,33 @@ echo "APP_NAME=${APP_NAME}" >> cti-app-credentials.env
 
 echo -e "${BLUE}Adding required API permissions...${NC}"
 
-# Microsoft Threat Protection (Indicator.ReadWrite.All)
+# Microsoft Threat Protection (ThreatIndicators.ReadWrite.OwnedBy)
 echo "Adding Microsoft Threat Protection permissions..."
 az ad app permission add --id "$APP_ID" \
   --api 8ee8fdad-f234-4243-8f3b-15c294843740 \
   --api-permissions e63268a5-313a-4f9d-9b1e-93bd8d49f818=Role > /dev/null 2>&1
 
-# Microsoft Graph (IdentityRiskyUser.ReadWrite.All)
+# Microsoft Graph (IdentityRiskyUser.Read.All)
 echo "Adding Microsoft Graph permissions..."
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions 594c1fb6-4f81-4475-ae41-0c394909246c=Role > /dev/null 2>&1
+  --api-permissions a529b722-3f78-4591-bf40-5325421a6371=Role > /dev/null 2>&1
 
-# Microsoft Graph (Policy.ReadWrite.ConditionalAccess)
+# Microsoft Graph (ThreatIntelligence.Read.All)
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions 5ac13192-7ace-4fcf-b828-1a26f28068ee=Role > /dev/null 2>&1
+  --api-permissions 34bf0e97-1971-4929-b999-9e2442d941d7=Role > /dev/null 2>&1
 
-# Office 365 Exchange Online (Exchange.ManageAsApp)
+# Microsoft Graph (Policy.Read.All)
+az ad app permission add --id "$APP_ID" \
+  --api 00000003-0000-0000-c000-000000000000 \
+  --api-permissions 246dd0d5-5bd0-4def-940b-0421030a5b68=Role > /dev/null 2>&1
+
+# Office 365 Exchange Online (ThreatIntelligence.Read)
 echo "Adding Office 365 Exchange Online permissions..."
 az ad app permission add --id "$APP_ID" \
   --api 00000002-0000-0ff1-ce00-000000000000 \
-  --api-permissions dc50a0fb-09a3-484d-be87-e023b12c6440=Role > /dev/null 2>&1
+  --api-permissions 71d35314-55d1-419b-a3e9-b4d1182071d9=Role > /dev/null 2>&1
 
 echo -e "${GREEN}API permissions added successfully.${NC}"
 echo -e "${YELLOW}Note: An administrator must grant admin consent for these permissions.${NC}"
