@@ -5,7 +5,7 @@
 Deploy the CTI solution directly in Azure Cloud Shell:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh --advanced | bash
 ```
 
 For a customized deployment with specific parameters:
