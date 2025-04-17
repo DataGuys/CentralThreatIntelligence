@@ -52,10 +52,14 @@ check_prerequisites() {
     echo -e "${GREEN}Using subscription: ${SUBSCRIPTION_NAME} (${SUBSCRIPTION_ID})${NC}"
     echo -e "${GREEN}Tenant ID: ${TENANT_ID}${NC}"
     
-    # Check if Microsoft Graph API extension is installed
-    if ! az extension show --name msgraph &> /dev/null; then
-        echo -e "${YELLOW}Installing Microsoft Graph extension for Azure CLI...${NC}"
-        az extension add --name msgraph
+    # Check for jq
+    if ! command -v jq &> /dev/null; then
+        echo -e "${YELLOW}The jq tool is required but not found. Installing jq...${NC}"
+        apt-get update && apt-get install -y jq
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}Could not install jq. Will try to proceed without it.${NC}"
+        fi
     fi
 }
 
@@ -69,23 +73,36 @@ create_app_registration() {
     
     # Create the app registration
     echo "Creating app registration: ${APP_NAME}..."
-    APP_CREATE_RESULT=$(az ad app create --display-name "${APP_NAME}" --query "{appId:appId,objectId:id}" -o json)
+    APP_CREATE_RESULT=$(az ad app create --display-name "${APP_NAME}")
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to create app registration. Exiting.${NC}"
         exit 1
     fi
     
-    # Extract app ID and object ID
-    APP_ID=$(echo $APP_CREATE_RESULT | jq -r '.appId')
-    OBJECT_ID=$(echo $APP_CREATE_RESULT | jq -r '.objectId')
+    # Extract app ID and object ID - handle both with and without jq
+    if command -v jq &> /dev/null; then
+        APP_ID=$(echo $APP_CREATE_RESULT | jq -r '.appId')
+        OBJECT_ID=$(echo $APP_CREATE_RESULT | jq -r '.id')
+    else
+        # Fallback to using grep and cut if jq is not available
+        APP_ID=$(echo $APP_CREATE_RESULT | grep -o '"appId": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+        OBJECT_ID=$(echo $APP_CREATE_RESULT | grep -o '"id": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+    fi
+    
+    if [ -z "$APP_ID" ]; then
+        echo -e "${RED}Failed to extract Application ID. Manual extraction required.${NC}"
+        echo "Please review the output and extract the appId:"
+        echo "$APP_CREATE_RESULT"
+        read -p "Enter the appId value: " APP_ID
+    fi
     
     echo -e "${GREEN}Application successfully created.${NC}"
     echo -e "${GREEN}Application (Client) ID: ${APP_ID}${NC}"
     
     # Create service principal for the application
     echo "Creating service principal for the application..."
-    az ad sp create --id $APP_ID --query "id" -o tsv > /dev/null
+    az ad sp create --id $APP_ID > /dev/null
     
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to create service principal. The app was created but permissions may not work correctly.${NC}"
@@ -96,6 +113,7 @@ create_app_registration() {
     # Save app info to a file
     echo "CLIENT_ID=${APP_ID}" > cti-app-credentials.env
     echo "APP_OBJECT_ID=${OBJECT_ID}" >> cti-app-credentials.env
+    echo "APP_NAME=${APP_NAME}" >> cti-app-credentials.env
     
     echo -e "${BLUE}Application details saved to cti-app-credentials.env${NC}"
 }
