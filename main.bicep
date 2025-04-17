@@ -128,7 +128,7 @@ var logAnalyticsDataCollectorConnectionName = 'azureloganalyticsdatacollector'
 var logAnalyticsQueryConnectionName = 'azuremonitorlogs'
 var microsoftGraphConnectionName = 'microsoftgraph'
 var securityApiBaseUrl = 'https://api.security.microsoft.com'
-var dceCopilotIntegrationName = 'DCE-CTI-SecurityCopilot'
+var dceCopilotIntegrationName = enableSecurityCopilot ? 'DCE-CTI-SecurityCopilot' : ''
 
 // Table schemas with modern structure aligned with STIX 2.1
 var tables = [
@@ -542,12 +542,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
-      ipRules: !empty(allowedIpAddresses) ? [for ip in allowedIpAddresses: {
+      ipRules: empty(allowedIpAddresses) ? [] : map(allowedIpAddresses, ip => {
         value: ip
-      }] : []
-      virtualNetworkRules: !empty(allowedSubnetIds) ? [for subnetId in allowedSubnetIds: {
+      })
+      virtualNetworkRules: empty(allowedSubnetIds) ? [] : map(allowedSubnetIds, subnetId => {
         id: subnetId
-      }] : []
+      })
     }
   }
 }
@@ -616,8 +616,8 @@ resource logAnalyticsConnection 'Microsoft.Web/connections@2016-06-01' = {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azureloganalyticsdatacollector')
     }
     parameterValues: {
-      'workspace': ctiWorkspace.properties.customerId
-      'workspaceKey': listKeys(ctiWorkspace.id, '2022-10-01').primarySharedKey
+      workspace: ctiWorkspace.properties.customerId
+      workspaceKey: ctiWorkspace.listKeys().primarySharedKey
     }
   }
   dependsOn: [
@@ -635,16 +635,12 @@ resource logAnalyticsQueryConnection 'Microsoft.Web/connections@2016-06-01' = {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuremonitorlogs')
     }
     parameterValues: {
-      'token:TenantId': tenantId
-      'token:clientId': appClientId
-      'token:clientSecret': listSecrets(clientSecretValue.id, '2023-02-01').value
-      'token:grantType': 'client_credentials'
+      token:TenantId: tenantId
+      token:clientId: appClientId
+      token:clientSecret: clientSecretValue.properties.value
+      token:grantType: 'client_credentials'
     }
   }
-  dependsOn: [
-    clientSecretValue
-    keyVaultRoleAssignment
-  ]
 }
 
 // Microsoft Graph connection for modern API access
@@ -658,10 +654,10 @@ resource microsoftGraphConnection 'Microsoft.Web/connections@2016-06-01' = {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'microsoftgraph')
     }
     parameterValues: {
-      'token:TenantId': tenantId
-      'token:clientId': appClientId
-      'token:clientSecret': listSecrets(clientSecretValue.id, '2023-02-01').value
-      'token:grantType': 'client_credentials'
+      token:TenantId: tenantId
+      token:clientId: appClientId
+      token:clientSecret: clientSecretValue.properties.value
+      token:grantType: 'client_credentials'
     }
   }
   dependsOn: [
@@ -1458,7 +1454,7 @@ resource taxiiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
                       repetitions: 20  // Increased from 10 for faster processing
                     }
                     staticResult: {
-                      staticResultOptions: "Disabled"  // Added for performance
+                      staticResultOptions: 'Disabled'  // Added for performance
                     }
                   }
                 }
@@ -1677,7 +1673,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           type: 'Http'
           inputs: {
             method: 'POST'
-            uri: 'https://login.microsoftonline.com/@{parameters(\'tenantId\')}/oauth2/token'
+            uri: '${environment().authentication.loginEndpoint}${parameters(\'tenantId\')}/oauth2/token'
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -1832,7 +1828,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
               repetitions: 20  // Increased from 10 for faster processing
             }
             staticResult: {
-              staticResultOptions: "Disabled"  // Added for performance
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
@@ -1979,7 +1975,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
               repetitions: 20  // Increased from 10 for faster processing
             }
             staticResult: {
-              staticResultOptions: "Disabled"  // Added for performance
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
@@ -2126,7 +2122,7 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
               repetitions: 20  // Increased from 10 for faster processing
             }
             staticResult: {
-              staticResultOptions: "Disabled"  // Added for performance
+              staticResultOptions: 'Disabled'  // Added for performance
             }
           }
         }
@@ -2233,7 +2229,7 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           type: 'Http'
           inputs: {
             method: 'POST'
-            uri: 'https://login.microsoftonline.com/@{parameters(\'tenantId\')}/oauth2/token'
+            uri: '${environment().authentication.loginEndpoint}${parameters(\'tenantId\')}/oauth2/token'
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -4650,6 +4646,55 @@ resource sentinelSolution 'Microsoft.OperationsManagement/solutions@2015-11-01-p
   }
   properties: {
     workspaceResourceId: ctiWorkspace.id
+  }
+}
+
+// Implement Analytics Rules if enabled
+resource analyticRules 'Microsoft.SecurityInsights/alertRules@2022-11-01' = if (enableAnalyticsRules && enableSentinelIntegration) {
+  name: 'CTI-ThreatIntelMatch'
+  scope: resourceId('Microsoft.OperationalInsights/workspaces', ctiWorkspaceName)
+  kind: 'ThreatIntelligence'
+  properties: {
+    displayName: 'Threat Intelligence Indicator Match'
+    enabled: true
+    productFilter: 'Microsoft Sentinel'
+    severitiesFilter: ['High']
+    sourceSettings: [
+      {
+        sourceId: 'Azure Sentinel'
+        sourceType: 'SentinelAlerting'
+        status: 'Enabled'
+      }
+    ]
+  }
+  dependsOn: [
+    enableSentinelIntegration && empty(existingSentinelWorkspaceId) ? sentinelSolution : ctiWorkspace
+  ]
+}
+
+// Implement Hunting Queries if enabled
+resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = if (enableHuntingQueries && enableSentinelIntegration) {
+  parent: ctiWorkspace
+  name: 'CTI-DomainIOCMatch'
+  properties: {
+    category: 'Hunting Queries'
+    displayName: 'Domain IOC matches in DNS queries'
+    query: 'let iocs = CTI_DomainIndicators_CL | where Active_b == true;\nDnsEvents | where Name has_any (iocs)'
+    version: 2
+    tags: [
+      {
+        name: 'description'
+        value: 'Finds matches of domain indicators in DNS query logs'
+      }
+      {
+        name: 'tactics'
+        value: 'CommandAndControl,Exfiltration'
+      }
+      {
+        name: 'techniques'
+        value: 'T1071,T1567'
+      }
+    ]
   }
 }
 
