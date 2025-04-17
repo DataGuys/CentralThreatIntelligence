@@ -1,3 +1,4 @@
+cat > create-cti-app-fixed.sh << 'EOF'
 #!/bin/bash
 # =========================================================
 # CTI Application Registration Setup Script
@@ -51,16 +52,6 @@ check_prerequisites() {
     
     echo -e "${GREEN}Using subscription: ${SUBSCRIPTION_NAME} (${SUBSCRIPTION_ID})${NC}"
     echo -e "${GREEN}Tenant ID: ${TENANT_ID}${NC}"
-    
-    # Check for jq
-    if ! command -v jq &> /dev/null; then
-        echo -e "${YELLOW}The jq tool is required but not found. Installing jq...${NC}"
-        apt-get update && apt-get install -y jq
-        
-        if [ $? -ne 0 ]; then
-            echo -e "${YELLOW}Could not install jq. Will try to proceed without it.${NC}"
-        fi
-    fi
 }
 
 # Function to create the app registration
@@ -80,21 +71,13 @@ create_app_registration() {
         exit 1
     fi
     
-    # Extract app ID and object ID - handle both with and without jq
-    if command -v jq &> /dev/null; then
-        APP_ID=$(echo $APP_CREATE_RESULT | jq -r '.appId')
-        OBJECT_ID=$(echo $APP_CREATE_RESULT | jq -r '.id')
-    else
-        # Fallback to using grep and cut if jq is not available
-        APP_ID=$(echo $APP_CREATE_RESULT | grep -o '"appId": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-        OBJECT_ID=$(echo $APP_CREATE_RESULT | grep -o '"id": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-    fi
+    # Extract app ID
+    APP_ID=$(az ad app list --display-name "${APP_NAME}" --query "[0].appId" -o tsv)
+    OBJECT_ID=$(az ad app list --display-name "${APP_NAME}" --query "[0].id" -o tsv)
     
     if [ -z "$APP_ID" ]; then
-        echo -e "${RED}Failed to extract Application ID. Manual extraction required.${NC}"
-        echo "Please review the output and extract the appId:"
-        echo "$APP_CREATE_RESULT"
-        read -p "Enter the appId value: " APP_ID
+        echo -e "${RED}Failed to extract Application ID. Exiting.${NC}"
+        exit 1
     fi
     
     echo -e "${GREEN}Application successfully created.${NC}"
@@ -236,3 +219,6 @@ create_client_secret
 display_next_steps
 
 exit 0
+EOF
+
+chmod +x create-cti-app-fixed.sh
