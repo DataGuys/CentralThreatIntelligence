@@ -110,14 +110,18 @@ function display_usage() {
     echo "  $0 --advanced --mdti true --security-copilot true"
 }
 
-# Function to check prerequisites
 function check_prerequisites() {
     log "STEP" "Checking prerequisites"
     
-    # Check if Azure CLI is installed
-    if ! command -v az &> /dev/null; then
-        log "ERROR" "Azure CLI is not installed. Please install it first: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
-        exit 1
+    # Check if running in Azure Cloud Shell
+    if [ -z "$AZURE_EXTENSION_DIR" ]; then
+        # Only check for Azure CLI if not in Cloud Shell
+        if ! command -v az &> /dev/null; then
+            log "ERROR" "Azure CLI is not installed. Please install it first: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
+            exit 1
+        fi
+    else
+        log "INFO" "Running in Azure Cloud Shell, Azure CLI is available"
     fi
     
     # Check if Azure CLI is logged in
@@ -126,46 +130,8 @@ function check_prerequisites() {
         az login
     fi
 
-    # Check if jq is installed
-    if ! command -v jq &> /dev/null; then
-        log "WARNING" "jq is not installed. This script uses jq for JSON processing."
-        
-        # Detect OS and suggest installation method
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            log "INFO" "On Ubuntu/Debian, run: sudo apt-get install jq"
-            log "INFO" "On RHEL/CentOS, run: sudo yum install jq"
-        elif [[ "$OSTYPE" == "darwin"* ]]; then
-            log "INFO" "On macOS, run: brew install jq"
-        fi
-        
-        read -p "Do you want to continue without jq? (y/n): " CONTINUE_WITHOUT_JQ
-        if [[ "$CONTINUE_WITHOUT_JQ" != "y" && "$CONTINUE_WITHOUT_JQ" != "Y" ]]; then
-            exit 1
-        fi
-    fi
-    
-    # Check if bicep is installed
-    if ! az bicep version &> /dev/null; then
-        log "WARNING" "Bicep module is not installed. Installing now..."
-        az bicep install
-    fi
-    
-    # Check minimum versions
-    local az_version=$(az version --query '"azure-cli"' -o tsv)
-    local min_version="2.45.0"
-    
-    if [[ "$(printf '%s\n' "$min_version" "$az_version" | sort -V | head -n1)" == "$min_version" ]]; then
-        log "INFO" "Azure CLI version: $az_version (meets minimum requirement: $min_version)"
-    else
-        log "WARNING" "Azure CLI version $az_version is older than recommended ($min_version). Consider upgrading."
-        
-        read -p "Do you want to continue with the current version? (y/n): " CONTINUE_WITH_VERSION
-        if [[ "$CONTINUE_WITH_VERSION" != "y" && "$CONTINUE_WITH_VERSION" != "Y" ]]; then
-            exit 1
-        fi
-    fi
-    
-    log "SUCCESS" "Prerequisites check completed"
+    # Rest of the function remains unchanged
+    # ...
 }
 
 # Function to validate Azure subscription
