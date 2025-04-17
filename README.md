@@ -1,11 +1,15 @@
 # Central Threat Intelligence (CTI) Solution
 
 ## Quick Start
+### Create the App Registration
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | bash
+```
 
 Deploy the CTI solution directly in Azure Cloud Shell:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --advanced
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash
 ```
 
 For a customized deployment with specific parameters:
