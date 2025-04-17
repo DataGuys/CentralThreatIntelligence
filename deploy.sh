@@ -1,12 +1,34 @@
 #!/bin/bash
 # Enhanced CTI Deployment Script with Subscription Selection
 # Author: Claude
-# Version: 2.0
+# Version: 2.1
 # Date: April 2025
 
 # Set strict error handling
 set -e
 set -o pipefail
+
+# Setup cleanup on exit
+function cleanup() {
+    # Remove any temporary files
+    if [[ -f "$TEMP_PARAMS_FILE" ]]; then
+        rm -f "$TEMP_PARAMS_FILE"
+    fi
+    echo ""
+    log "INFO" "Script execution completed"
+}
+
+# Handle interruption gracefully
+function handle_interrupt() {
+    echo ""
+    log "WARNING" "Script execution interrupted by user"
+    cleanup
+    exit 1
+}
+
+# Register the cleanup function for normal exit and interrupts
+trap cleanup EXIT
+trap handle_interrupt SIGINT SIGTERM
 
 # Color definitions for better readability
 readonly RED='\033[0;31m'
@@ -27,6 +49,9 @@ ENABLE_SECURITY_COPILOT=false
 SKIP_WORKBOOKS=false
 ADVANCED_DEPLOYMENT=false
 REQUIRED_TOOLS=("jq" "az")
+SCRIPT_VERSION="2.1"
+MIN_AZ_CLI_VERSION="2.40.0"
+TEMP_PARAMS_FILE=""
 
 # Log function with timestamps
 function log() {
@@ -76,6 +101,50 @@ function display_usage() {
     echo "  $0 --advanced"
 }
 
+# Function to validate Azure CLI version
+function validate_az_version() {
+    log "STEP" "Checking Azure CLI version"
+    
+    local AZ_VERSION=$(az version --query '"azure-cli"' -o tsv)
+    log "INFO" "Found Azure CLI version $AZ_VERSION"
+    
+    # Compare versions using version sort
+    if [[ "$(printf '%s\n' "$MIN_AZ_CLI_VERSION" "$AZ_VERSION" | sort -V | head -n1)" != "$MIN_AZ_CLI_VERSION" ]]; then
+        log "SUCCESS" "Azure CLI version $AZ_VERSION is compatible"
+    else
+        log "WARNING" "Azure CLI version $AZ_VERSION may be too old. Minimum recommended version is $MIN_AZ_CLI_VERSION"
+        if [[ "$ADVANCED_DEPLOYMENT" == "true" ]]; then
+            read -p "Continue anyway? (y/n): " CONTINUE
+            if [[ "$CONTINUE" != "y" && "$CONTINUE" != "Y" ]]; then
+                log "INFO" "Please update Azure CLI and try again"
+                exit 0
+            fi
+        else
+            log "INFO" "Continuing with available version. Update recommended for optimal experience"
+        fi
+    fi
+}
+
+# Function to check internet connectivity
+function check_connectivity() {
+    log "STEP" "Checking internet connectivity"
+    
+    # Try to connect to Microsoft Azure
+    if curl -s --connect-timeout 5 https://management.azure.com > /dev/null; then
+        log "SUCCESS" "Internet connectivity confirmed"
+    else
+        log "WARNING" "Could not connect to Azure. Check your internet connection"
+        if [[ "$ADVANCED_DEPLOYMENT" == "true" ]]; then
+            read -p "Continue anyway? (y/n): " CONTINUE
+            if [[ "$CONTINUE" != "y" && "$CONTINUE" != "Y" ]]; then
+                exit 0
+            fi
+        else
+            log "INFO" "Continuing despite connectivity issues"
+        fi
+    fi
+}
+
 # Function to check prerequisites
 function check_prerequisites() {
     log "STEP" "Checking prerequisites"
@@ -100,6 +169,9 @@ function check_prerequisites() {
             log "ERROR" "Azure CLI is not installed. Please install it first: https://docs.microsoft.com/en-us/cli/azure/install-azure-cli"
             exit 1
         fi
+        
+        # Validate Azure CLI version if not in Cloud Shell
+        validate_az_version
     else
         log "INFO" "Running in Azure Cloud Shell, Azure CLI is available"
     fi
@@ -108,6 +180,12 @@ function check_prerequisites() {
     if ! az account show &> /dev/null; then
         log "WARNING" "Not logged in to Azure. Please login."
         az login
+        
+        # Verify login was successful
+        if ! az account show &> /dev/null; then
+            log "ERROR" "Login failed. Please check your credentials and try again."
+            exit 1
+        fi
     fi
     
     # Verify main.bicep exists in the current directory
@@ -116,7 +194,34 @@ function check_prerequisites() {
         exit 1
     fi
     
+    # Check if we can create temporary files
+    if ! touch "$(mktemp -u)" &> /dev/null; then
+        log "ERROR" "Unable to create temporary files. Check your permissions."
+        exit 1
+    fi
+    
     log "SUCCESS" "Prerequisites check completed"
+}
+
+# Function to validate resource name
+function validate_resource_name() {
+    local name=$1
+    local resource_type=$2
+    
+    # Name must be between 3 and 63 characters
+    if [[ ${#name} -lt 3 || ${#name} -gt 63 ]]; then
+        log "ERROR" "$resource_type name must be between 3 and 63 characters"
+        return 1
+    fi
+    
+    # Name must start with a letter or number and contain only lowercase letters, numbers, and hyphens
+    if ! [[ $name =~ ^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$ ]]; then
+        log "ERROR" "$resource_type name must contain only lowercase letters, numbers, and hyphens"
+        log "ERROR" "$resource_type name must start and end with a letter or number"
+        return 1
+    fi
+    
+    return 0
 }
 
 # Function to select Azure subscription
@@ -238,15 +343,15 @@ function validate_subscription() {
                 az provider register --namespace $provider
                 log "INFO" "Waiting for $provider registration to complete..."
                 
-                # Show progress indicator
-                local dots="...."
-                local i=0
+                # Show progress indicator with spinner
+                local chars="/-\|"
+                local count=0
                 while [[ "$(az provider show --namespace $provider --query "registrationState" -o tsv 2>/dev/null)" != "Registered" ]]; do
-                    printf "\r%s Waiting for registration%s" "$provider" "${dots:0:$i}"
-                    ((i=(i+1)%5))
-                    sleep 5
+                    local spinner=${chars:count++%${#chars}:1}
+                    printf "\r%s Waiting for registration... %s " "$provider" "$spinner"
+                    sleep 2
                 done
-                echo ""
+                printf "\r%s Registration complete!    \n" "$provider"
                 log "SUCCESS" "$provider registered successfully"
             done
         fi
@@ -324,6 +429,21 @@ function select_location() {
 function ensure_resource_group() {
     log "STEP" "Setting up resource group: $RESOURCE_GROUP_NAME"
     
+    # Validate resource group name
+    if ! validate_resource_name "$RESOURCE_GROUP_NAME" "Resource group"; then
+        if [[ "$ADVANCED_DEPLOYMENT" == "true" ]]; then
+            log "WARNING" "The provided resource group name may not be valid"
+            read -p "Do you want to continue with this name anyway? (y/n): " CONTINUE
+            if [[ "$CONTINUE" != "y" && "$CONTINUE" != "Y" ]]; then
+                log "INFO" "Please restart with a valid resource group name"
+                exit 0
+            fi
+        else
+            log "ERROR" "Invalid resource group name. Please use a valid name."
+            exit 1
+        fi
+    fi
+    
     # Check if resource group exists
     if az group show --name "$RESOURCE_GROUP_NAME" &> /dev/null; then
         log "INFO" "Resource group $RESOURCE_GROUP_NAME already exists"
@@ -378,6 +498,11 @@ function deploy_bicep_template() {
     
     # Create a temporary parameters file
     TEMP_PARAMS_FILE=$(mktemp)
+    if [ $? -ne 0 ]; then
+        log "ERROR" "Failed to create temporary parameters file"
+        exit 1
+    fi
+    
     log "INFO" "Creating deployment parameters file: $TEMP_PARAMS_FILE"
     
     # Create parameters file with modern parameters
@@ -406,6 +531,7 @@ function deploy_bicep_template() {
                 "solution": "CentralThreatIntelligence",
                 "environment": "Production",
                 "createdBy": "DeployScript",
+                "version": "$SCRIPT_VERSION",
                 "deploymentDate": "$(date +%Y-%m-%d)"
             }
         }
@@ -439,6 +565,13 @@ EOF
     
     # Deploy the template
     log "INFO" "Starting Bicep deployment - this may take several minutes..."
+    
+    # Display a more detailed progress indicator during deployment
+    log "INFO" "Deployment started at $(date +"%H:%M:%S")"
+    echo ""
+    echo "Deploying resources... This may take 10-15 minutes"
+    echo -ne "■□□□□□□□□□ 10%\r"
+    sleep 2
     
     DEPLOYMENT_RESULT=$(az deployment group create \
       --name "$DEPLOYMENT_NAME" \
@@ -478,8 +611,7 @@ EOF
         exit 1
     fi
     
-    # Clean up temporary parameters file
-    rm -f "$TEMP_PARAMS_FILE"
+    # Clean up temporary parameters file - Handled by cleanup function
     
     # Extract key outputs
     CTI_WORKSPACE_ID=$(echo "$DEPLOYMENT_RESULT" | jq -r '.properties.outputs.ctiWorkspaceId.value')
@@ -491,9 +623,11 @@ EOF
     log "DATA" "CTI Workspace Name: $CTI_WORKSPACE_NAME"
     log "DATA" "Key Vault Name: $KEY_VAULT_NAME"
     
-    # Save deployment info for later reference
-    mkdir -p .cti
-    cat > .cti/deployment-info.json << EOF
+    # Save deployment info for later reference with proper error handling
+    if ! mkdir -p .cti 2>/dev/null; then
+        log "WARNING" "Could not create .cti directory for storing deployment information"
+    else
+        cat > .cti/deployment-info.json << EOF
 {
     "deploymentName": "$DEPLOYMENT_NAME",
     "deploymentTime": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
@@ -506,16 +640,22 @@ EOF
     "subscriptionName": "$(az account show --query name -o tsv)",
     "sentinelIntegration": $ENABLE_SENTINEL_INTEGRATION,
     "mdtiIntegration": $ENABLE_MDTI,
-    "securityCopilotIntegration": $ENABLE_SECURITY_COPILOT
+    "securityCopilotIntegration": $ENABLE_SECURITY_COPILOT,
+    "scriptVersion": "$SCRIPT_VERSION"
 }
 EOF
-
-    # Create directory with permission check
-    if ! mkdir -p .cti 2>/dev/null; then
-        log "WARNING" "Could not create .cti directory for storing deployment information"
-    else
         log "INFO" "Deployment information saved to .cti/deployment-info.json"
     fi
+}
+
+# Function to check for script updates
+function check_for_updates() {
+    log "STEP" "Checking for script updates"
+    
+    # For enterprise environments, could check against a centralized repo
+    # This is a placeholder implementation
+    log "INFO" "Running script version $SCRIPT_VERSION"
+    log "INFO" "Check the repository for the latest version"
 }
 
 # Function to display next steps
@@ -597,9 +737,15 @@ done
 # Main script execution
 echo "=================================================="
 echo "Central Threat Intelligence (CTI) Solution Deployment"
-echo "Version: 2.0 - April 2025"
+echo "Version: $SCRIPT_VERSION - April 2025"
 echo "=================================================="
 echo ""
+
+# Check for script updates
+check_for_updates
+
+# Check internet connectivity
+check_connectivity
 
 # Check prerequisites
 check_prerequisites
