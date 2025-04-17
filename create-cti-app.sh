@@ -9,6 +9,13 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Detect if script is being piped
+if [ -t 0 ]; then
+  INTERACTIVE=true
+else
+  INTERACTIVE=false
+fi
+
 echo -e "\n======================================================="
 echo "     CTI Application Registration Setup Script"
 echo "======================================================="
@@ -28,8 +35,16 @@ echo -e "${GREEN}Using subscription: ${SUB_NAME} (${SUB_ID})${NC}"
 echo -e "${GREEN}Tenant ID: ${TENANT_ID}${NC}"
 
 echo -e "${BLUE}Creating Microsoft Entra ID application registration...${NC}"
-read -p "Enter a name for the application [CTI-Solution]: " APP_NAME
-APP_NAME=${APP_NAME:-"CTI-Solution"}
+
+# Handle app name input depending on whether script is run interactively
+if [ "$INTERACTIVE" = true ]; then
+  read -p "Enter a name for the application [CTI-Solution]: " APP_NAME
+  APP_NAME=${APP_NAME:-"CTI-Solution"}
+else
+  # When piped through curl, use default
+  APP_NAME="CTI-Solution"
+  echo "Using default app name: ${APP_NAME}"
+fi
 
 echo "Creating app registration: ${APP_NAME}..."
 APP_CREATE=$(az ad app create --display-name "${APP_NAME}")
@@ -45,7 +60,7 @@ echo -e "${GREEN}Application successfully created.${NC}"
 echo -e "${GREEN}Application (Client) ID: ${APP_ID}${NC}"
 
 echo "Creating service principal for the application..."
-az ad sp create --id "$APP_ID" > /dev/null || {
+az ad sp create --id "$APP_ID" > /dev/null 2>&1 || {
   echo -e "${RED}Failed to create service principal.${NC}"
   exit 1
 }
@@ -59,21 +74,29 @@ echo "APP_NAME=${APP_NAME}" >> cti-app-credentials.env
 echo -e "${BLUE}Adding required API permissions...${NC}"
 
 echo "Adding Microsoft Threat Protection permissions..."
-az ad app permission add --id "$APP_ID" --api 8ee8fdad-f234-4243-8f3b-15c294843740 --api-permissions e63268a5-313a-4f9d-9b1e-93bd8d49f818=Role > /dev/null
+az ad app permission add --id "$APP_ID" --api 8ee8fdad-f234-4243-8f3b-15c294843740 --api-permissions e63268a5-313a-4f9d-9b1e-93bd8d49f818=Role > /dev/null 2>&1
 
 echo "Adding Microsoft Graph permissions..."
-az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 594c1fb6-4f81-4475-ae41-0c394909246c=Role > /dev/null
-az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 5ac13192-7ace-4fcf-b828-1a26f28068ee=Role > /dev/null
+az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 594c1fb6-4f81-4475-ae41-0c394909246c=Role > /dev/null 2>&1
+az ad app permission add --id "$APP_ID" --api 00000003-0000-0000-c000-000000000000 --api-permissions 5ac13192-7ace-4fcf-b828-1a26f28068ee=Role > /dev/null 2>&1
 
 echo "Adding Office 365 Exchange Online permissions..."
-az ad app permission add --id "$APP_ID" --api 00000002-0000-0ff1-ce00-000000000000 --api-permissions 7f06df7a-86b2-4c6f-9e5b-a5be1a6469a8=Role > /dev/null
+az ad app permission add --id "$APP_ID" --api 00000002-0000-0ff1-ce00-000000000000 --api-permissions 7f06df7a-86b2-4c6f-9e5b-a5be1a6469a8=Role > /dev/null 2>&1
 
 echo -e "${GREEN}API permissions added successfully.${NC}"
 echo -e "${YELLOW}Note: An administrator must grant admin consent for these permissions.${NC}"
 
 echo -e "${BLUE}Creating client secret...${NC}"
-read -p "Client secret duration in years [2]: " SECRET_YEARS
-SECRET_YEARS=${SECRET_YEARS:-2}
+
+# Handle secret years input depending on whether script is run interactively
+if [ "$INTERACTIVE" = true ]; then
+  read -p "Client secret duration in years [2]: " SECRET_YEARS
+  SECRET_YEARS=${SECRET_YEARS:-2}
+else
+  # When piped through curl, use default
+  SECRET_YEARS=2
+  echo "Using default secret duration: ${SECRET_YEARS} years"
+fi
 
 echo "Creating client secret with ${SECRET_YEARS} year(s) duration..."
 SECRET_RESULT=$(az ad app credential reset --id "$APP_ID" --years "$SECRET_YEARS" --query password -o tsv)
