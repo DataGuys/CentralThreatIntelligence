@@ -59,25 +59,25 @@ echo -e "${BLUE}Adding required permissions...${NC}"
 # Microsoft Graph - Security permissions
 echo "Adding Microsoft Graph security permissions..."
 
-# ThreatIntelligence.ReadWrite.All - For working with tenant allow/block lists
+# ThreatIntelligence.Read.All - For working with tenant threat intelligence
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions 8788f5f9-32ad-41d4-bb4b-04d3fb304bbe=Role
+  --api-permissions "e2cea78f-e743-4d8f-a16a-75b629a038ae=Role"
 
-# ThreatSubmission.ReadWrite.All - For tenant allow/block list actions
+# ThreatIndicators.ReadWrite.OwnedBy - For tenant allow/block list actions
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions 06b708e4-43bd-4981-8f5f-df5f409ce988=Role
+  --api-permissions "21792b6c-c986-4ffc-85de-df9da54b52fa=Role"
 
 # SecurityEvents.ReadWrite.All - For general security operations
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions c492639c-d437-4513-a9d8-c4285b6aa824=Role
+  --api-permissions "5e0edab9-c148-49d0-b423-ac253e121825=Role"
 
 # IdentityRiskyUser.Read.All - For risky user data
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions a529b722-3f78-4591-bf40-5325421a6371=Role
+  --api-permissions "a529b722-3f78-4591-bf40-5325421a6371=Role"
 
 echo -e "${GREEN}API permissions added successfully.${NC}"
 
