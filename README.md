@@ -3,7 +3,7 @@
 ## Quick Start
 ### Create the App Registration
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
 ```
 
 Deploy the CTI solution directly in Azure Cloud Shell:
