@@ -149,6 +149,80 @@ az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
   --api-permissions "926a6798-b100-4a20-a22f-a4918f13951d=Role"
 
+  # Azure Security Center API permissions
+echo "Adding Azure Security Center permissions..."
+# resourceAppId: 7b7531ad-5926-4f2d-8a1d-38495ad33e17
+az ad app permission add --id "$APP_ID" \
+  --api 7b7531ad-5926-4f2d-8a1d-38495ad33e17 \
+  --api-permissions "c613cf81-75fb-4201-a32b-7a58d1fe4dff=Role"
+
+# Microsoft Defender for Cloud Apps API permissions
+echo "Adding Microsoft Defender for Cloud Apps permissions..."
+# resourceAppId: 58c746b0-a0b0-4647-a8f6-12dde5981638
+az ad app permission add --id "$APP_ID" \
+  --api 58c746b0-a0b0-4647-a8f6-12dde5981638 \
+  --api-permissions "179ad82c-ddf7-4180-9ecc-af2608f2ae6d=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 58c746b0-a0b0-4647-a8f6-12dde5981638 \
+  --api-permissions "c05406e2-24d5-4c73-8c33-dde21e8501e6=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 58c746b0-a0b0-4647-a8f6-12dde5981638 \
+  --api-permissions "50974fa0-9c21-4479-a75c-a901ccdb4b5c=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 58c746b0-a0b0-4647-a8f6-12dde5981638 \
+  --api-permissions "2e03c640-95b1-462d-b0cc-811335e6c60b=Role"
+
+# Windows Defender ATP API permissions
+echo "Adding Windows Defender ATP permissions..."
+# resourceAppId: c98e5057-edde-4666-b301-186a01b4dc58
+az ad app permission add --id "$APP_ID" \
+  --api c98e5057-edde-4666-b301-186a01b4dc58 \
+  --api-permissions "f89ec176-467b-452a-a2eb-7144ac6aa9cc=Role"
+
+# Microsoft Threat Intelligence API permissions
+echo "Adding Microsoft Threat Intelligence permissions..."
+# resourceAppId: 8ee8fdad-f234-4243-8f3b-15c294843740
+az ad app permission add --id "$APP_ID" \
+  --api 8ee8fdad-f234-4243-8f3b-15c294843740 \
+  --api-permissions "7734e8e5-8dde-42fc-b5ae-6eafea078693=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 8ee8fdad-f234-4243-8f3b-15c294843740 \
+  --api-permissions "8d90f441-09cf-4fdc-ab45-e874fa3a28e8=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 8ee8fdad-f234-4243-8f3b-15c294843740 \
+  --api-permissions "a7deff90-e2f5-4e4e-83a3-2c74e7002e28=Role"
+
+# Microsoft Teams API permissions
+echo "Adding Microsoft Teams permissions..."
+# resourceAppId: 00000007-0000-0ff1-ce00-000000000000
+az ad app permission add --id "$APP_ID" \
+  --api 00000007-0000-0ff1-ce00-000000000000 \
+  --api-permissions "8f819283-077c-4c68-aa24-0ad706da26e0=Role"
+
+# Microsoft Sentinel API permissions
+echo "Adding Microsoft Sentinel permissions..."
+# resourceAppId: 9ec59623-ce40-4dc8-a635-ed0275b5d58a
+az ad app permission add --id "$APP_ID" \
+  --api 9ec59623-ce40-4dc8-a635-ed0275b5d58a \
+  --api-permissions "cba40051-8d05-45da-aa85-f6321b023c16=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 9ec59623-ce40-4dc8-a635-ed0275b5d58a \
+  --api-permissions "7e2fc5f2-d647-4926-89f6-f13ad2950560=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 9ec59623-ce40-4dc8-a635-ed0275b5d58a \
+  --api-permissions "04cd5d64-65c5-4dc5-9582-89bac29ed189=Role"
+
+az ad app permission add --id "$APP_ID" \
+  --api 9ec59623-ce40-4dc8-a635-ed0275b5d58a \
+  --api-permissions "5a55b1b6-8996-4250-abc2-74ec0107ab20=Role"
+
 echo -e "${GREEN}API permissions added successfully.${NC}"
 
 echo -e "${BLUE}Creating client secret...${NC}"
