@@ -1,5 +1,5 @@
 #!/bin/bash
-# CTI App Registration Script - Optimized for security and threat management permissions
+# CTI App Registration Script - Updated to match existing JSON manifest
 set -e
 
 # Color definitions for output
@@ -56,38 +56,53 @@ echo "APP_NAME=${APP_NAME}" >> cti-app-credentials.env
 
 echo -e "${BLUE}Adding required permissions...${NC}"
 
-# Microsoft Graph - Security permissions
-echo "Adding Microsoft Graph security permissions..."
+# Microsoft Threat Protection API permissions
+echo "Adding Microsoft Threat Protection API permissions..."
+# resourceAppId: 05a65629-4c1b-48c1-a78b-804c4abdd4af
+
+# AdvancedHunting.Read.All - Run advanced hunting queries
+az ad app permission add --id "$APP_ID" \
+  --api 05a65629-4c1b-48c1-a78b-804c4abdd4af \
+  --api-permissions "a832eaa3-0cfc-4a2b-9af1-27c5b092dd40=Role"
+
+# Alert.ReadWrite.All - Read and write all alerts
+az ad app permission add --id "$APP_ID" \
+  --api 05a65629-4c1b-48c1-a78b-804c4abdd4af \
+  --api-permissions "8e41f311-31d5-43aa-bb79-8fd4e14a8745=Role"
+
+# File.Read.All - Read file profiles
+az ad app permission add --id "$APP_ID" \
+  --api 05a65629-4c1b-48c1-a78b-804c4abdd4af \
+  --api-permissions "cb792285-1541-416c-a581-d8ede4ebc219=Role"
+
+# Url.Read.All - Read URLs
+az ad app permission add --id "$APP_ID" \
+  --api 05a65629-4c1b-48c1-a78b-804c4abdd4af \
+  --api-permissions "e9aa7b67-ea0d-435b-ab36-592cd9b23d61=Role"
+
+# Microsoft Graph API permissions
+echo "Adding Microsoft Graph permissions..."
+# resourceAppId: 00000003-0000-0000-c000-000000000000
 
 # IdentityRiskEvent.Read.All - Read all identity risk event information
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
   --api-permissions "6e472fd1-ad78-48da-a0f0-97ab2c6b769e=Role"
 
-# IdentityRiskyServicePrincipal.Read.All - Read all identity risky service principal information
+# IdentityProvider.Read.All - Read identity providers
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "4ac0bcad-eaf8-4312-8b92-d8bd76c9b54d=Role"
+  --api-permissions "dc5007c0-2d7d-4c42-879c-2dab87571379=Role"
 
-# IdentityRiskyUser.Read.All - Read all identity risky user information
+# Policy.Read.All - Read all your organization's policies
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "a529b722-3f78-4591-bf40-5325421a6371=Role"
+  --api-permissions "01c0a623-fc9b-48e9-b794-0756f8e8f067=Role"
 
-# IdentityUserFlow.Read.All - Read all identity user flows
+# Policy.ReadWrite.SecurityAction - Read and write Microsoft Entra security action policies
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "1eddd4c3-f7c2-4f95-9a1d-2f471689fe4f=Role"
-
-# RiskDetection.Read.All - Read all risk detection information
-az ad app permission add --id "$APP_ID" \
-  --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "4ac2b571-26ac-4caa-b379-271d2272fca0=Role"
-
-# RiskDetection.ReadWrite.All - Read and write all risk detection information
-az ad app permission add --id "$APP_ID" \
-  --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "db06fb33-1953-4b7b-a2ac-be962d7b83a0=Role"
+  --api-permissions "2a6baefd-edea-4ff6-b24e-bebcaa27a50d=Role"
 
 # SecurityActions.Read.All - Read your organization's security actions
 az ad app permission add --id "$APP_ID" \
@@ -99,40 +114,40 @@ az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
   --api-permissions "d903a879-88e0-4c09-b0c9-82f6a1333f84=Role"
 
-# ThreatAssessment.Read.All - Read threat assessment requests
+# ServiceHealth.Read.All - Read service health
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "f8503b4a-14bf-496b-81e0-337bd9f902b0=Role"
+  --api-permissions "f8f035bb-2cce-47fb-8bf5-7baf3ecbee48=Role"
 
 # ThreatHunting.Read.All - Run hunting queries
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
   --api-permissions "dd98c7f5-2d42-42d3-a0e4-633161547251=Role"
 
-# ThreatIndicators.Read.All - Read all threat indicators
+# ThreatIntelligence.ReadWrite - Read and write threat intelligence information
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "970eccb3-65a5-47fa-8242-c2d3c5a92372=Role"
+  --api-permissions "197ee4e9-b993-4066-898f-d6aecc55125b=Role"
 
 # ThreatIndicators.ReadWrite.OwnedBy - Manage threat indicators this app creates or owns
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
   --api-permissions "21792b6c-c986-4ffc-85de-df9da54b52fa=Role"
 
-# ThreatIntelligence.Read.All - Read all Threat Intelligence Information
+# User.Read.All - Read all users' full profiles
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "e2cea78f-e743-4d8f-a16a-75b629a038ae=Role"
+  --api-permissions "e0b77adb-e790-44a3-b0a0-257d06303687=Role"
 
-# ThreatSubmission.ReadWrite.All - Read and write all of the organization's threat submissions
+# UserAuthenticationMethod.Read.All - Read all users' authentication methods
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "9cc427b4-2004-41c5-aa22-757b755e9796=Role"
+  --api-permissions "d72bdbf4-a59b-405c-8b04-5995895819ac=Role"
 
-# ThreatSubmissionPolicy.ReadWrite.All - Read and write all of the organization's threat submission policies
+# SecurityIncident.Read.All - Read all your organization's security incidents
 az ad app permission add --id "$APP_ID" \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions "89c8469c-83ad-45f7-8ff2-6e3d4285709e=Role"
+  --api-permissions "926a6798-b100-4a20-a22f-a4918f13951d=Role"
 
 echo -e "${GREEN}API permissions added successfully.${NC}"
 
