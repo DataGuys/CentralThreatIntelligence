@@ -26,9 +26,24 @@ function handle_interrupt() {
     exit 1
 }
 
-# Register the cleanup function for normal exit and interrupts
+# Function to handle unexpected errors
+function handle_unexpected_error() {
+    local err_code=$?
+    local line_num=$1
+    
+    echo ""
+    echo "================ ERROR DETECTED ================"
+    echo "An unexpected error occurred at line $line_num with exit code $err_code"
+    echo "Last command: $BASH_COMMAND"
+    echo "Debug log: /tmp/cti_deploy_debug.log"
+    echo "=============================================="
+    exit $err_code
+}
+
+# Register all cleanup and error handlers
 trap cleanup EXIT
 trap handle_interrupt SIGINT SIGTERM
+trap 'handle_unexpected_error $LINENO' ERR
 
 # Color definitions for better readability
 readonly RED='\033[0;31m'
@@ -228,11 +243,31 @@ function validate_resource_name() {
 function select_subscription() {
     log "STEP" "Fetching available Azure subscriptions"
     
-    # Get list of subscriptions
-    SUBSCRIPTIONS=$(az account list --query "[?state=='Enabled'].{name:name, id:id, isDefault:isDefault}" -o json)
+    # Debug log file
+    DEBUG_LOG="/tmp/cti_deploy_debug.log"
+    echo "=== SUBSCRIPTION SELECTION DEBUG $(date) ===" >> "$DEBUG_LOG"
+    
+    # Get list of subscriptions with error trapping
+    echo "Running: az account list" >> "$DEBUG_LOG"
+    SUBSCRIPTION_RESULT=$(az account list --query "[?state=='Enabled'].{name:name, id:id, isDefault:isDefault}" -o json 2>&1)
+    SUBSCRIPTION_EXIT_CODE=$?
+    
+    # Log the raw output
+    echo "Exit code: $SUBSCRIPTION_EXIT_CODE" >> "$DEBUG_LOG"
+    echo "Raw output length: $(echo "$SUBSCRIPTION_RESULT" | wc -c) bytes" >> "$DEBUG_LOG"
+    echo "First 500 bytes: $(echo "$SUBSCRIPTION_RESULT" | head -c 500)" >> "$DEBUG_LOG"
+    
+    if [ $SUBSCRIPTION_EXIT_CODE -ne 0 ]; then
+        log "ERROR" "Failed to retrieve Azure subscriptions with error: $SUBSCRIPTION_RESULT"
+        log "ERROR" "Debug information saved to $DEBUG_LOG"
+        exit 1
+    fi
+    
+    SUBSCRIPTIONS="$SUBSCRIPTION_RESULT"
     
     if [ -z "$SUBSCRIPTIONS" ] || [ "$SUBSCRIPTIONS" == "[]" ]; then
         log "ERROR" "No enabled Azure subscriptions found. Please check your Azure account."
+        log "ERROR" "Debug information saved to $DEBUG_LOG"
         exit 1
     fi
     
@@ -364,11 +399,34 @@ function validate_subscription() {
 function select_location() {
     log "STEP" "Selecting Azure location"
     
-    # Get list of available locations
-    LOCATIONS=$(az account list-locations --query "[].{name:name, displayName:displayName}" -o json)
+    # Create debug log file
+    DEBUG_LOG="/tmp/cti_deploy_debug.log"
+    echo "=== DEBUG LOG STARTED $(date) ===" > "$DEBUG_LOG"
+    
+    # Get list of available locations with error trapping
+    log "INFO" "Fetching available Azure locations..." 
+    echo "Running: az account list-locations" >> "$DEBUG_LOG"
+    
+    LOCATIONS_RESULT=$(az account list-locations --query "[].{name:name, displayName:displayName}" -o json 2>&1)
+    LOCATIONS_EXIT_CODE=$?
+    
+    # Log the raw output
+    echo "Exit code: $LOCATIONS_EXIT_CODE" >> "$DEBUG_LOG"
+    echo "Raw output:" >> "$DEBUG_LOG"
+    echo "$LOCATIONS_RESULT" >> "$DEBUG_LOG"
+    
+    if [ $LOCATIONS_EXIT_CODE -ne 0 ]; then
+        log "ERROR" "Failed to retrieve Azure locations with error: $LOCATIONS_RESULT"
+        log "ERROR" "Using default location: $LOCATION"
+        log "ERROR" "Debug information saved to $DEBUG_LOG"
+        return
+    fi
+    
+    LOCATIONS="$LOCATIONS_RESULT"
     
     if [ -z "$LOCATIONS" ] || [ "$LOCATIONS" == "[]" ]; then
-        log "ERROR" "Failed to retrieve Azure locations. Using default: $LOCATION"
+        log "ERROR" "Retrieved empty location list. Using default: $LOCATION"
+        log "ERROR" "Debug information saved to $DEBUG_LOG"
         return
     fi
     
