@@ -9,7 +9,7 @@ curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/re
 Deploy the CTI solution directly in Azure Cloud Shell:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | tr -d '\r' | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
 ```
 
 For a customized deployment with specific parameters:
