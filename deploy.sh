@@ -4,12 +4,11 @@
 # Version: 2.1
 # Date: April 2025
 
-# Set debugging to verbose mode to show every command executed
-set -x
+# IMPORTANT: Do NOT use "set -e" as it causes the script to exit on errors
+# which can close the Cloud Shell session
 
-# Set strict error handling
-set -e
-set -o pipefail
+# Set debugging to show commands (but comment out if too verbose)
+# set -x
 
 # Setup cleanup on exit
 function cleanup() {
@@ -29,24 +28,27 @@ function handle_interrupt() {
     exit 1
 }
 
-# Function to handle unexpected errors
-function handle_unexpected_error() {
-    local err_code=$?
-    local line_num=$1
+# Function to handle errors without exiting the shell
+function handle_error() {
+    local exit_code=$1
+    local error_message=$2
     
     echo ""
-    echo "================ ERROR DETECTED ================"
-    echo "An unexpected error occurred at line $line_num with exit code $err_code"
-    echo "Last command: $BASH_COMMAND"
-    echo "Debug log: /tmp/cti_deploy_debug.log"
-    echo "=============================================="
-    exit $err_code
+    echo "==============================================="
+    echo "❌ ${RED}ERROR DETECTED: $error_message${NC}"
+    echo "==============================================="
+    echo ""
+    echo "Press ENTER to continue or Ctrl+C to stop the script..."
+    read -r
+    
+    # Return the error code but don't exit the shell
+    return $exit_code
 }
 
-# Register all cleanup and error handlers
+# Register the cleanup function for normal exit and interrupts
+# Don't use ERR trap as it can cause the shell to exit
 trap cleanup EXIT
 trap handle_interrupt SIGINT SIGTERM
-trap 'handle_unexpected_error $LINENO' ERR
 
 # Color definitions for better readability
 readonly RED='\033[0;31m'
@@ -525,19 +527,18 @@ function ensure_resource_group() {
             
             # Validate the new name
             if ! validate_resource_name "$RESOURCE_GROUP_NAME" "Resource group"; then
-                echo "${RED}The new name is still invalid. Exiting script.${NC}"
-                echo "Please restart with a valid resource group name."
+                echo "${RED}The new name is still invalid.${NC}"
                 echo "Example of valid name: 'my-resource-group-123'"
                 echo ""
-                echo "Press any key to exit..."
-                read -n 1
-                exit 1
+                echo "Press ENTER to try again or Ctrl+C to exit..."
+                read -r
+                return 1
             fi
         else
-            echo "${RED}No name provided. Exiting script.${NC}"
-            echo "Press any key to exit..."
-            read -n 1
-            exit 1
+            echo "${RED}No name provided. Cannot continue without a valid resource group name.${NC}"
+            echo "Press ENTER to try again or Ctrl+C to exit..."
+            read -r
+            return 1
         fi
     fi
     
