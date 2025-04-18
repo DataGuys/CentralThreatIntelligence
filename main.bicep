@@ -206,56 +206,56 @@ var tables = [
       { name: 'IndicatorId_g', type: 'guid' }
     ]
   }
-{
-  name: 'CTI_MutexIndicators_CL'
-  columns: [
-    { name: 'MutexName_s', type: 'string' }
-    { name: 'ConfidenceScore_d', type: 'double' }
-    { name: 'SourceFeed_s', type: 'string' }
-    { name: 'FirstSeen_t', type: 'datetime' }
-    { name: 'LastSeen_t', type: 'datetime' }
-    { name: 'ExpirationDateTime_t', type: 'datetime' }
-    { name: 'MalwareFamily_s', type: 'string' }
-    { name: 'ThreatType_s', type: 'string' }
-    { name: 'ThreatCategory_s', type: 'string' }
-    { name: 'TLP_s', type: 'string' }
-    { name: 'Tags_s', type: 'string' }
-    { name: 'Description_s', type: 'string' }
-    { name: 'Action_s', type: 'string' }
-    { name: 'DistributionTargets_s', type: 'string' }
-    { name: 'ReportedBy_s', type: 'string' }
-    { name: 'ThreatActorName_s', type: 'string' }
-    { name: 'CampaignName_s', type: 'string' }
-    { name: 'Active_b', type: 'bool' }
-    { name: 'IndicatorId_g', type: 'guid' }
-  ]
-}
-{
-  name: 'CTI_RegistryIndicators_CL'
-  columns: [
-    { name: 'RegistryPath_s', type: 'string' }
-    { name: 'RegistryKey_s', type: 'string' }
-    { name: 'RegistryValue_s', type: 'string' }
-    { name: 'ConfidenceScore_d', type: 'double' }
-    { name: 'SourceFeed_s', type: 'string' }
-    { name: 'FirstSeen_t', type: 'datetime' }
-    { name: 'LastSeen_t', type: 'datetime' }
-    { name: 'ExpirationDateTime_t', type: 'datetime' }
-    { name: 'MalwareFamily_s', type: 'string' }
-    { name: 'ThreatType_s', type: 'string' }
-    { name: 'ThreatCategory_s', type: 'string' }
-    { name: 'TLP_s', type: 'string' }
-    { name: 'Tags_s', type: 'string' }
-    { name: 'Description_s', type: 'string' }
-    { name: 'Action_s', type: 'string' }
-    { name: 'DistributionTargets_s', type: 'string' }
-    { name: 'ReportedBy_s', type: 'string' }
-    { name: 'ThreatActorName_s', type: 'string' }
-    { name: 'CampaignName_s', type: 'string' }
-    { name: 'Active_b', type: 'bool' }
-    { name: 'IndicatorId_g', type: 'guid' }
-  ]
-}
+  {
+    name: 'CTI_MutexIndicators_CL'
+    columns: [
+      { name: 'MutexName_s', type: 'string' }
+      { name: 'ConfidenceScore_d', type: 'double' }
+      { name: 'SourceFeed_s', type: 'string' }
+      { name: 'FirstSeen_t', type: 'datetime' }
+      { name: 'LastSeen_t', type: 'datetime' }
+      { name: 'ExpirationDateTime_t', type: 'datetime' }
+      { name: 'MalwareFamily_s', type: 'string' }
+      { name: 'ThreatType_s', type: 'string' }
+      { name: 'ThreatCategory_s', type: 'string' }
+      { name: 'TLP_s', type: 'string' }
+      { name: 'Tags_s', type: 'string' }
+      { name: 'Description_s', type: 'string' }
+      { name: 'Action_s', type: 'string' }
+      { name: 'DistributionTargets_s', type: 'string' }
+      { name: 'ReportedBy_s', type: 'string' }
+      { name: 'ThreatActorName_s', type: 'string' }
+      { name: 'CampaignName_s', type: 'string' }
+      { name: 'Active_b', type: 'bool' }
+      { name: 'IndicatorId_g', type: 'guid' }
+    ]
+  }
+  {
+    name: 'CTI_RegistryIndicators_CL'
+    columns: [
+      { name: 'RegistryPath_s', type: 'string' }
+      { name: 'RegistryKey_s', type: 'string' }
+      { name: 'RegistryValue_s', type: 'string' }
+      { name: 'ConfidenceScore_d', type: 'double' }
+      { name: 'SourceFeed_s', type: 'string' }
+      { name: 'FirstSeen_t', type: 'datetime' }
+      { name: 'LastSeen_t', type: 'datetime' }
+      { name: 'ExpirationDateTime_t', type: 'datetime' }
+      { name: 'MalwareFamily_s', type: 'string' }
+      { name: 'ThreatType_s', type: 'string' }
+      { name: 'ThreatCategory_s', type: 'string' }
+      { name: 'TLP_s', type: 'string' }
+      { name: 'Tags_s', type: 'string' }
+      { name: 'Description_s', type: 'string' }
+      { name: 'Action_s', type: 'string' }
+      { name: 'DistributionTargets_s', type: 'string' }
+      { name: 'ReportedBy_s', type: 'string' }
+      { name: 'ThreatActorName_s', type: 'string' }
+      { name: 'CampaignName_s', type: 'string' }
+      { name: 'Active_b', type: 'bool' }
+      { name: 'IndicatorId_g', type: 'guid' }
+    ]
+  }
   {
     name: 'CTI_URLIndicators_CL'
     columns: [
