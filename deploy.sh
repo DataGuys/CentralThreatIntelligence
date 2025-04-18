@@ -4,6 +4,9 @@
 # Version: 2.1
 # Date: April 2025
 
+# Set debugging to verbose mode to show every command executed
+set -x
+
 # Set strict error handling
 set -e
 set -o pipefail
@@ -223,19 +226,27 @@ function validate_resource_name() {
     local name=$1
     local resource_type=$2
     
+    echo ""
+    echo "▶️ VALIDATING RESOURCE NAME: '$name' (Type: $resource_type)"
+    
     # Name must be between 3 and 63 characters
     if [[ ${#name} -lt 3 || ${#name} -gt 63 ]]; then
-        log "ERROR" "$resource_type name must be between 3 and 63 characters"
+        echo "❌ ${RED}ERROR: $resource_type name must be between 3 and 63 characters${NC}"
+        echo "❌ ${RED}Current length: ${#name} characters${NC}"
         return 1
     fi
     
     # Name must start with a letter or number and contain only lowercase letters, numbers, and hyphens
     if ! [[ $name =~ ^[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]$ ]]; then
-        log "ERROR" "$resource_type name must contain only lowercase letters, numbers, and hyphens"
-        log "ERROR" "$resource_type name must start and end with a letter or number"
+        echo "❌ ${RED}ERROR: $resource_type name validation failed${NC}"
+        echo "   - ${RED}$resource_type name must contain only lowercase letters, numbers, and hyphens${NC}"
+        echo "   - ${RED}$resource_type name must start and end with a letter or number${NC}"
+        echo ""
+        echo "❓ ${YELLOW}Does your resource name contain uppercase letters or special characters?${NC}"
         return 1
     fi
     
+    echo "✅ ${GREEN}Name validation passed${NC}"
     return 0
 }
 
@@ -488,16 +499,44 @@ function ensure_resource_group() {
     log "STEP" "Setting up resource group: $RESOURCE_GROUP_NAME"
     
     # Validate resource group name
+    echo ""
+    echo "=================================================="
+    echo "RESOURCE GROUP VALIDATION"
+    echo "=================================================="
+    echo "Validating resource group name: $RESOURCE_GROUP_NAME"
+    
     if ! validate_resource_name "$RESOURCE_GROUP_NAME" "Resource group"; then
-        if [[ "$ADVANCED_DEPLOYMENT" == "true" ]]; then
-            log "WARNING" "The provided resource group name may not be valid"
-            read -p "Do you want to continue with this name anyway? (y/n): " CONTINUE
-            if [[ "$CONTINUE" != "y" && "$CONTINUE" != "Y" ]]; then
-                log "INFO" "Please restart with a valid resource group name"
-                exit 0
+        echo ""
+        echo "${RED}Resource group name validation failed!${NC}"
+        echo "${YELLOW}The resource group name must:${NC}"
+        echo " - Be between 3 and 63 characters"
+        echo " - Contain only lowercase letters, numbers, and hyphens"
+        echo " - Start and end with a letter or number"
+        echo ""
+        echo "Current name: ${RED}$RESOURCE_GROUP_NAME${NC}"
+        echo ""
+        
+        # Always ask for a new name on validation failure
+        echo "Please enter a new resource group name that meets the requirements:"
+        read -p "> " NEW_RG_NAME
+        
+        if [[ -n "$NEW_RG_NAME" ]]; then
+            RESOURCE_GROUP_NAME=$NEW_RG_NAME
+            
+            # Validate the new name
+            if ! validate_resource_name "$RESOURCE_GROUP_NAME" "Resource group"; then
+                echo "${RED}The new name is still invalid. Exiting script.${NC}"
+                echo "Please restart with a valid resource group name."
+                echo "Example of valid name: 'my-resource-group-123'"
+                echo ""
+                echo "Press any key to exit..."
+                read -n 1
+                exit 1
             fi
         else
-            log "ERROR" "Invalid resource group name. Please use a valid name."
+            echo "${RED}No name provided. Exiting script.${NC}"
+            echo "Press any key to exit..."
+            read -n 1
             exit 1
         fi
     fi
