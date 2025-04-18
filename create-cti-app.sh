@@ -244,14 +244,17 @@ echo "               Setup Complete!"
 echo "======================================================="
 
 echo "App registration has been created successfully with necessary security permissions."
-echo -e "\n ${YELLOW} IMPORTANT NEXT STEPS: ${NC}"
+echo -e "\n${YELLOW}IMPORTANT NEXT STEPS:${NC}"
 echo "1. Grant admin consent for API permissions in the Azure Portal:"
 echo "   - Navigate to: Microsoft Entra ID > App registrations"
 echo "   - Select your app: ${APP_NAME}"
 echo "   - Go to 'API permissions'"
 echo "   - Click 'Grant admin consent for <your-tenant>'"
-# Replace the current echo statement for the deployment command with these lines:
+
 echo -e "\n2. Run the CTI deployment script with your new client ID:"
-echo -e "${GREEN}curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh ${NC}"
-echo -e "${GREEN}  | tr -d '\\r' | bash -s -- --advanced --client-id \"${APP_ID}\"${NC}"
+echo "   Copy and execute the following command:"
+echo "   ----------------------------------------"
+echo "   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' | bash -s -- --advanced --client-id \"${APP_ID}\""
+echo "   ----------------------------------------"
+
 echo -e "\nYour app credentials have been saved to: cti-app-credentials.env"
