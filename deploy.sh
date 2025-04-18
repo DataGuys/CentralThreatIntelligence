@@ -1,7 +1,7 @@
 #!/bin/bash
 # Enhanced CTI Deployment Script with Subscription Selection
 # Author: Claude
-# Version: 2.1
+# Version: 2.2
 # Date: April 2025
 
 # IMPORTANT: Do NOT use "set -e" as it causes the script to exit on errors
@@ -69,9 +69,11 @@ ENABLE_SECURITY_COPILOT=false
 SKIP_WORKBOOKS=false
 ADVANCED_DEPLOYMENT=false
 REQUIRED_TOOLS=("jq" "az")
-SCRIPT_VERSION="2.1"
+SCRIPT_VERSION="2.2"
 MIN_AZ_CLI_VERSION="2.40.0"
 TEMP_PARAMS_FILE=""
+CLIENT_ID="" # Added for app registration integration
+TENANT_ID="" # Added for tenant specification
 
 # Log function with timestamps
 function log() {
@@ -113,12 +115,14 @@ function display_usage() {
     echo "  -g, --resource-group NAME        Set the resource group name (default: $RESOURCE_GROUP_NAME)"
     echo "  -l, --location LOCATION          Set the Azure location (default: $LOCATION)"
     echo "  -w, --workspace-name NAME        Set the Log Analytics workspace name (default: $CTI_WORKSPACE_NAME)"
+    echo "  --client-id ID                   Set the client ID for Entra ID app registration (required)"
+    echo "  --tenant-id ID                   Set the tenant ID (default: current tenant)"
     echo "  --advanced                       Enable advanced deployment options"
     echo "  --skip-workbooks                 Skip workbook creation"
     echo ""
     echo "Examples:"
-    echo "  $0 --resource-group MyRG --location westus2"
-    echo "  $0 --advanced"
+    echo "  $0 --resource-group MyRG --location westus2 --client-id 00000000-0000-0000-0000-000000000000"
+    echo "  $0 --advanced --client-id 00000000-0000-0000-0000-000000000000"
 }
 
 # Function to validate Azure CLI version
@@ -208,11 +212,24 @@ function check_prerequisites() {
         fi
     fi
     
-    # Verify main.bicep exists in the current directory
-    if [ ! -f "main.bicep" ]; then
-        log "ERROR" "main.bicep file not found in the current directory"
+    # Check for client ID parameter
+    if [ -z "$CLIENT_ID" ]; then
+        log "ERROR" "Client ID is required. Use --client-id parameter to specify."
+        display_usage
         exit 1
     fi
+    
+    # Verify main.bicep exists in the current directory or download it
+    if [ ! -f "main.bicep" ]; then
+        log "WARNING" "main.bicep file not found in the current directory. Attempting to download..."
+        curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/main.bicep -o main.bicep
+        if [ ! -f "main.bicep" ]; then
+            log "ERROR" "Failed to download main.bicep file. Please check your internet connection or download it manually."
+            exit 1
+        else
+            log "SUCCESS" "Successfully downloaded main.bicep"
+        fi
+    }
     
     # Check if we can create temporary files
     if ! touch "$(mktemp -u)" &> /dev/null; then
@@ -603,7 +620,13 @@ function deploy_bicep_template() {
     
     log "INFO" "Creating deployment parameters file: $TEMP_PARAMS_FILE"
     
-    # Create parameters file with modern parameters
+    # If TENANT_ID is not provided, get it from the current context
+    if [ -z "$TENANT_ID" ]; then
+        TENANT_ID=$(az account show --query tenantId -o tsv)
+        log "INFO" "Using current tenant ID: $TENANT_ID"
+    fi
+    
+    # Create parameters file with modern parameters - including client ID and tenant ID
     cat > "$TEMP_PARAMS_FILE" << EOF
 {
     "\$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
@@ -623,6 +646,12 @@ function deploy_bicep_template() {
         },
         "enableSecurityCopilot": {
             "value": $ENABLE_SECURITY_COPILOT
+        },
+        "appClientId": {
+            "value": "$CLIENT_ID"
+        },
+        "tenantId": {
+            "value": "$TENANT_ID"
         },
         "tags": {
             "value": {
@@ -647,6 +676,8 @@ EOF
     echo "  Sentinel Integration: $ENABLE_SENTINEL_INTEGRATION"
     echo "  Microsoft Defender TI Integration: $ENABLE_MDTI"
     echo "  Security Copilot Integration: $ENABLE_SECURITY_COPILOT"
+    echo "  Client ID: $CLIENT_ID"
+    echo "  Tenant ID: $TENANT_ID"
     echo ""
     
     if [[ "$ADVANCED_DEPLOYMENT" == "true" ]]; then
@@ -736,6 +767,8 @@ EOF
     "keyVaultName": "$KEY_VAULT_NAME",
     "subscriptionId": "$(az account show --query id -o tsv)",
     "subscriptionName": "$(az account show --query name -o tsv)",
+    "clientId": "$CLIENT_ID", 
+    "tenantId": "$TENANT_ID",
     "sentinelIntegration": $ENABLE_SENTINEL_INTEGRATION,
     "mdtiIntegration": $ENABLE_MDTI,
     "securityCopilotIntegration": $ENABLE_SECURITY_COPILOT,
@@ -814,6 +847,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -w|--workspace-name)
             CTI_WORKSPACE_NAME="$2"
+            shift 2
+            ;;
+        --client-id)
+            CLIENT_ID="$2"
+            shift 2
+            ;;
+        --tenant-id)
+            TENANT_ID="$2"
             shift 2
             ;;
         --advanced)
