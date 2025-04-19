@@ -12,7 +12,8 @@ fi
 # Build the menu options
 options=()
 for i in "${!sub_names[@]}"; do
-    options+=("$(($i + 1))) ${sub_names[$i]}")
+    # Include the subscription ID in the menu option
+    options+=("$(($i + 1))) ${sub_names[$i]} (${sub_ids[$i]})")
 done
 options+=("$((${#sub_names[@]} + 1))) Quit")
 
@@ -33,6 +34,7 @@ select opt_display in "${options[@]}"; do
         # Get the corresponding subscription ID and name
         SUB_ID="${sub_ids[$choice_index]}"
         selected_name="${sub_names[$choice_index]}"
+        # Display the selected name and ID immediately
         echo "You selected: $selected_name ($SUB_ID)"
         break # Exit the select loop
     else
@@ -57,5 +59,3 @@ echo "Active subscription is now: $current_sub_name ($current_sub_id)"
 
 # The SUB_ID variable now holds the selected subscription ID for subsequent commands
 echo "Variable SUB_ID is set to: $SUB_ID"
-SUB_ID=$(az account show --query id -o tsv)
-az account set --subscription $SUB_ID
