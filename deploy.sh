@@ -9,9 +9,9 @@
 #   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | \
 #       bash -s -- \
 #       --subscription-id <SUB_ID> \
-#       --client-id        <AAD_APP_ID> \
+#       --client-id        <APP_ID> \
 #       --resource-group   CTI-RG \
-#       --location         eastus2
+#       --location         eastus
 #
 ###############################################################################
 set -Eeuo pipefail
@@ -55,7 +55,8 @@ Optional flags:
 
 Example (Cloud Shell one‑liner):
   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | \
-    bash -s -- --subscription-id SUB --client-id AAD_APP_ID --location westus2
+    bash -s -- --subscription-id SUB_ID --client-id APP_ID --location eastus --resource-group CTI-RG
+    --workspace-name CTI-Workspace
 EOF
 }
 
