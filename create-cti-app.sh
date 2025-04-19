@@ -2,7 +2,6 @@
 # CTI App Registration Script - Updated to match existing JSON manifest
 set -e
 # --- make STDIN the real terminal even if the script was piped ---
-exec < /dev/tty
 # ----------------------------------------------------------------
 # Color definitions for output
 RED='\033[0;31m'
@@ -21,38 +20,36 @@ if ! az account show &> /dev/null; then
   az login
 fi
 
-# ----- Choose an Azure subscription -------------------------------------------------
-# Pull names and IDs into parallel arrays
-mapfile -t SUB_NAMES < <(az account list --query "[].name" -o tsv)
-mapfile -t SUB_IDS   < <(az account list --query "[].id"   -o tsv)
+# --- Choose or accept an Azure subscription ------------------------------------------------
+choose_subscription() {
+  # Honour an env‑var or CLI flag first
+  if [[ -n "${CTI_SUBSCRIPTION_ID:-}" ]]; then
+      az account set --subscription "$CTI_SUBSCRIPTION_ID"
+      return
+  fi
 
-if [ "${#SUB_NAMES[@]}" -eq 0 ]; then
-  echo "No Azure subscriptions found. Run 'az login' first." >&2
-  exit 1
-fi
+  # If exactly one subscription, no need to prompt
+  if [[ "${#SUB_NAMES[@]}" -eq 1 ]]; then
+      az account set --subscription "${SUB_IDS[0]}"
+      return
+  fi
 
-# If there’s only one subscription, skip the menu to save a click
-if [ "${#SUB_NAMES[@]}" -gt 1 ]; then
-  echo -e "\nSelect the subscription to use:"
-  select SUB_NAME in "${SUB_NAMES[@]}"; do
-    if [[ -n "$SUB_NAME" ]]; then
-      # Map the selected name back to its ID
-      for i in "${!SUB_NAMES[@]}"; do
-        [[ "${SUB_NAMES[$i]}" == "$SUB_NAME" ]] && SUB_ID="${SUB_IDS[$i]}" && break
+  # Only attempt an interactive menu when stdin *is* a TTY
+  if [[ -t 0 ]]; then
+      echo -e "\nSelect the subscription to use:"
+      select SUB_NAME in "${SUB_NAMES[@]}"; do
+          [[ -n "$SUB_NAME" ]] && break
+          echo "❌  Invalid choice – try again."
       done
-      break
-    else
-      echo "❌  Invalid choice – try again."
-    fi
-  done
-else
-  SUB_NAME="${SUB_NAMES[0]}"
-  SUB_ID="${SUB_IDS[0]}"
-fi
+      for i in "${!SUB_NAMES[@]}"; do
+          [[ "${SUB_NAMES[$i]}" == "$SUB_NAME" ]] && az account set --subscription "${SUB_IDS[$i]}"
+      done
+  else
+      echo -e "${RED}No subscription provided and not running interactively.${NC}" >&2
+      exit 1
+  fi
+}
 
-# Set the chosen subscription as the current context
-az account set --subscription "$SUB_ID" >/dev/null
-# ------------------------------------------------------------------------------------
 
 # Get subscription & tenant details (now guaranteed to be the one the user picked)
 TENANT_ID=$(az account show --query tenantId -o tsv)
