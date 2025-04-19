@@ -252,9 +252,10 @@ echo "   - Go to 'API permissions'"
 echo "   - Click 'Grant admin consent for <your-tenant>'"
 
 echo -e "\n2. Run the CTI deployment script with your new client ID:"
-echo "   Copy and execute the following command:"
+echo "   Copy and execute the following command in Azure Cloud Shell to deploy the CTI solution:"
 echo "   ----------------------------------------"
-echo "   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' | bash -s -- --advanced --client-id \"${APP_ID}\""
-echo "   ----------------------------------------"
+echo " SUB_ID=\"\"; PS3='Select subscription: '; mapfile -t SUBS < <(az account list --query \"[].{name:name,id:id}\" -o tsv); select SUB in \"\${SUBS[@]}\"; do [[ -n \$SUB ]] && az account set --subscription \"\${SUB##*$'\t'}\" && echo \"Switched to subscription: \${SUB%%$'\t'*}\" && CHOSEN_SUB_ID=\"\${SUB##*$'\t'}\" && break; done" # Capture chosen ID
+echo " curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' |  bash -s -- --subscription-id \${SUB_ID} --client-id ${APP_ID} --location eastus"
+echo "----------------------------------------"
 
 echo -e "\nYour app credentials have been saved to: cti-app-credentials.env"
