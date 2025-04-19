@@ -22,7 +22,7 @@ RED=$'\033[0;31m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[0;33m'; BLUE=$'\033[0;34m'
 
 # ─── defaults ───────────────────────────────────────────────────────────────
 SCRIPT_VERSION="3.0"
-RESOURCE_GROUP_NAME="CTI-ResourceGroup"
+RESOURCE_GROUP_NAME="CTI-RG"
 LOCATION="eastus"
 WORKSPACE_NAME="CTI-Workspace"
 ENABLE_SENTINEL=true
