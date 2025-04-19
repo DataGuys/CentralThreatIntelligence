@@ -88,15 +88,30 @@ The fastest way to deploy this solution is using Azure Cloud Shell:
 
 ### 1. Create the app registration first
 
-   *(Ensure you have the correct Azure subscription selected in Cloud Shell:
+   *(Ensure you have the correct Azure subscription selected in Cloud Shell. You can use the following commands to select your subscription interactively and set the `SUB_ID` variable):*
 
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/subscriptionpicker.sh | bash
+# Download the subscription picker script
+curl -sL -o subscriptionpicker.sh https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/subscriptionpicker.sh
+
+# Make it executable
+chmod +x subscriptionpicker.sh
+
+# Run the script to select the subscription and export SUB_ID
+# Note: If the script doesn't export SUB_ID automatically, 
+# you might need to manually set it based on the script's output.
+# Example: export SUB_ID=$(./subscriptionpicker.sh) 
+# Or copy the Subscription ID shown by the script and run: export SUB_ID="your-subscription-id"
+./subscriptionpicker.sh 
+
+# Verify the SUB_ID is set (optional)
+echo "Selected Subscription ID: $SUB_ID" 
 ```
 
 #### 1 App Registration Deployment
 
 ```bash
+# Ensure SUB_ID is set before running this command
 curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh \
 | bash -s -- --subscription-id $SUB_ID --app-name "CTI-Solution" --secret-years 3
 ```
