@@ -66,30 +66,29 @@ resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@20
   parent: workspace
   name: 'CTI-DomainIOCMatch'
   properties: {
-    category: 'Hunting Queries'
-    displayName: 'Domain IOC matches in DNS queries'
+    category: 'Hunting Queries',  // Added comma
+    displayName: 'Domain IOC matches in DNS queries',  // Added comma
     query: '''
       let iocs = CTI_DomainIndicators_CL | where Active_b == true | project DomainName_s;
       DnsEvents | where Name has_any (iocs)
-    ''' // Corrected query slightly for clarity
-    version: 2
+    ''', // Corrected query slightly for clarity
+    version: 2,  // Added comma
     tags: [
       {
-        name: 'description'
+        name: 'description',
         value: 'Finds matches of domain indicators in DNS query logs'
-      }
+      },
       {
-        name: 'tactics'
+        name: 'tactics',
         value: 'CommandAndControl,Exfiltration'
-      }
+      },
       {
-        name: 'techniques'
+        name: 'techniques',
         value: 'T1071,T1567'
       }
     ]
   }
   // Implicitly depends on workspace. Explicit dependency on sentinelSolution might be needed
-  // if the query relies on Sentinel features/tables beyond basic Log Analytics.
   dependsOn: [
     sentinelSolution
   ]

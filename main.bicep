@@ -124,6 +124,62 @@ module sentinelIntegration './sentinel-integration.bicep' = {
   dependsOn: [ customTables ]
 }
 
+resource workbook 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  // ...existing code...
+  properties: {
+    // ...existing code...
+    content: '''
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": "text",
+      "content": {
+        "json": "# Threat Intelligence Dashboard"
+      },
+      "name": "Title"
+    },
+    {
+      "type": "dropdown",
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "timeRange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time Range",
+            "type": 4,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                { "durationMs": 3600000 },
+                { "durationMs": 86400000 },
+                { "durationMs": 604800000 },
+                { "durationMs": 2592000000 }
+              ]
+            }
+          }
+        ]
+      },
+      "name": "TimeRangeDropdown"
+    }
+    // Additional workbook elements with proper comma separation
+  ],
+  "styleSettings": {
+    "showBorder": true
+  }
+}
+'''
+    // ...existing code...
+  }
+}
+
+var someVariable = 'properValue'  // Instead of using $someVariable
+var anotherVariable = 'anotherValue'  // Instead of using $anotherVariable
+
 output ctiWorkspaceId string = coreInfrastructure.outputs.ctiWorkspaceId
 output ctiWorkspaceName string = ctiWorkspaceName
 output keyVaultName string = parameters.outputs.keyVaultName
