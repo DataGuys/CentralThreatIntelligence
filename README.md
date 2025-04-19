@@ -81,7 +81,11 @@ The fastest way to deploy this solution is using Azure Cloud Shell:
 
 ### 1. Create the app registration first:
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh | bash
+bash -c 'mapfile -t S < <(az account list --query "[].{n:name,i:id}" -o tsv); \
+echo "Choose a subscription:"; select CH in "${S[@]}"; do [ -n "$CH" ] && break; done; \
+SUB_ID=${CH##*$'\t'};  az account set --subscription "$SUB_ID"; \
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh | \
+bash -s -- --subscription-id "$SUB_ID"'
 
 ```
 #### 1.1 Advanced App Registration Deployment
