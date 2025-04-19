@@ -10,7 +10,6 @@
 ###############################################################################
 
 # Fail fast and propagate errors through pipes; print a helpful message on failure
-set -Eeuo pipefail
 trap 'echo -e "\033[0;31mError on line $LINENO – aborting\033[0m" >&2' ERR
 
 # ─── Colours ────────────────────────────────────────────────────────────────
