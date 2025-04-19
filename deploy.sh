@@ -269,45 +269,33 @@ function validate_resource_name() {
     return 0
 }
 
-# Function to select Azure subscription
 function select_subscription() {
     log "STEP" "Fetching available Azure subscriptions"
     
-    # Debug log file
-    DEBUG_LOG="/tmp/cti_deploy_debug.log"
-    echo "=== SUBSCRIPTION SELECTION DEBUG $(date) ===" >> "$DEBUG_LOG"
-    
-    # Get list of subscriptions with error trapping
-    echo "Running: az account list" >> "$DEBUG_LOG"
-    SUBSCRIPTION_RESULT=$(az account list --query "[?state=='Enabled'].{name:name, id:id, isDefault:isDefault}" -o json 2>&1)
+    # Get list of subscriptions
+    SUBSCRIPTION_JSON=$(az account list --query "[?state=='Enabled'].{name:name, id:id, isDefault:isDefault}" -o json)
     SUBSCRIPTION_EXIT_CODE=$?
     
-    # Log the raw output
-    echo "Exit code: $SUBSCRIPTION_EXIT_CODE" >> "$DEBUG_LOG"
-    echo "Raw output length: $(echo "$SUBSCRIPTION_RESULT" | wc -c) bytes" >> "$DEBUG_LOG"
-    echo "First 500 bytes: $(echo "$SUBSCRIPTION_RESULT" | head -c 500)" >> "$DEBUG_LOG"
-    
     if [ $SUBSCRIPTION_EXIT_CODE -ne 0 ]; then
-        log "ERROR" "Failed to retrieve Azure subscriptions with error: $SUBSCRIPTION_RESULT"
-        log "ERROR" "Debug information saved to $DEBUG_LOG"
+        log "ERROR" "Failed to retrieve Azure subscriptions"
         exit 1
     fi
     
-    SUBSCRIPTIONS="$SUBSCRIPTION_RESULT"
-    
-    if [ -z "$SUBSCRIPTIONS" ] || [ "$SUBSCRIPTIONS" == "[]" ]; then
-        log "ERROR" "No enabled Azure subscriptions found. Please check your Azure account."
-        log "ERROR" "Debug information saved to $DEBUG_LOG"
-        exit 1
-    fi
+    # Parse subscriptions into arrays
+    readarray -t SUB_NAMES < <(echo "$SUBSCRIPTION_JSON" | jq -r '.[].name')
+    readarray -t SUB_IDS < <(echo "$SUBSCRIPTION_JSON" | jq -r '.[].id')
+    readarray -t SUB_DEFAULTS < <(echo "$SUBSCRIPTION_JSON" | jq -r '.[].isDefault')
     
     # Count subscriptions
-    SUBSCRIPTION_COUNT=$(echo $SUBSCRIPTIONS | jq '. | length')
+    SUBSCRIPTION_COUNT=${#SUB_NAMES[@]}
     
-    if [ $SUBSCRIPTION_COUNT -eq 1 ]; then
+    if [ $SUBSCRIPTION_COUNT -eq 0 ]; then
+        log "ERROR" "No enabled Azure subscriptions found. Please check your Azure account."
+        exit 1
+    elif [ $SUBSCRIPTION_COUNT -eq 1 ]; then
         # If only one subscription, use it
-        SUBSCRIPTION_ID=$(echo $SUBSCRIPTIONS | jq -r '.[0].id')
-        SUBSCRIPTION_NAME=$(echo $SUBSCRIPTIONS | jq -r '.[0].name')
+        SUBSCRIPTION_ID="${SUB_IDS[0]}"
+        SUBSCRIPTION_NAME="${SUB_NAMES[0]}"
         log "INFO" "Using the only available subscription: $SUBSCRIPTION_NAME ($SUBSCRIPTION_ID)"
         
         # Set the subscription as active
@@ -318,11 +306,11 @@ function select_subscription() {
         echo ""
         
         # Display subscriptions with numbers
-        echo "$SUBSCRIPTIONS" | jq -r 'to_entries | .[] | "\(.key+1). \(.value.name) (\(.value.id)) \(if .value.isDefault then "- DEFAULT" else "" end)"' | while read -r line; do
-            if [[ $line == *"DEFAULT"* ]]; then
-                echo -e "${GREEN}$line${NC}"
+        for i in "${!SUB_NAMES[@]}"; do
+            if [ "${SUB_DEFAULTS[$i]}" == "true" ]; then
+                echo -e "${GREEN}$((i+1)). ${SUB_NAMES[$i]} (${SUB_IDS[$i]}) - DEFAULT${NC}"
             else
-                echo "$line"
+                echo "$((i+1)). ${SUB_NAMES[$i]} (${SUB_IDS[$i]})"
             fi
         done
         
@@ -334,8 +322,8 @@ function select_subscription() {
             if [[ "$SELECTION" =~ ^[0-9]+$ ]] && [ "$SELECTION" -ge 1 ] && [ "$SELECTION" -le $SUBSCRIPTION_COUNT ]; then
                 # Valid selection
                 SELECTED_INDEX=$((SELECTION-1))
-                SUBSCRIPTION_ID=$(echo $SUBSCRIPTIONS | jq -r ".[$SELECTED_INDEX].id")
-                SUBSCRIPTION_NAME=$(echo $SUBSCRIPTIONS | jq -r ".[$SELECTED_INDEX].name")
+                SUBSCRIPTION_ID="${SUB_IDS[$SELECTED_INDEX]}"
+                SUBSCRIPTION_NAME="${SUB_NAMES[$SELECTED_INDEX]}"
                 break
             else
                 log "WARNING" "Invalid selection. Please enter a number between 1 and $SUBSCRIPTION_COUNT."
@@ -360,7 +348,6 @@ function select_subscription() {
     
     log "SUCCESS" "Successfully set subscription: $CURRENT_SUB_NAME ($CURRENT_SUB_ID)"
 }
-
 # Function to validate subscription for required providers
 function validate_subscription() {
     log "STEP" "Validating subscription for required providers"
