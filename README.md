@@ -87,18 +87,18 @@ A cyber threat intelligence platform serves as a centralized tool that collects,
 The fastest way to deploy this solution is using Azure Cloud Shell:
 
 ### 1. Create the app registration first
+
 #### 1 App Registration Deployment
 
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh \
-| bash -s
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh | tr -d '\r' | bash -s
 ```
 
 ### 2. Deploy the solution with the generated client ID
 
 ```bash
 PS3='Select subscription: '; mapfile -t SUBS < <(az account list --query "[].{name:name,id:id}" -o tsv); select SUB in "${SUBS[@]}"; do [[ -n $SUB ]] && az account set --subscription "${SUB##*$'\t'}" && echo "Switched to subscription: ${SUB%%$'\t'*}" && break; done
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh)" \
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh) | tr -d '\r'|" \
 -- --resource-group "CTI-RG" \
 --location "eastus" \
 --client-id "00000000-0000-0000-0000-000000000000"
