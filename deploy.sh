@@ -229,7 +229,7 @@ function check_prerequisites() {
         else
             log "SUCCESS" "Successfully downloaded main.bicep"
         fi
-    }
+    fi
     
     # Check if we can create temporary files
     if ! touch "$(mktemp -u)" &> /dev/null; then
