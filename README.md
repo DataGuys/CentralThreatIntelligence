@@ -98,8 +98,7 @@ curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/ma
 
 ```bash
 SUB_ID=\"\"; PS3='Select subscription: '; mapfile -t SUBS < <(az account list --query \"[].{name:name,id:id}\" -o tsv); select SUB in \"\${SUBS[@]}\"; do [[ -n \$SUB ]] && az account set --subscription \"\${SUB##*$'\t'}\" && echo \"Switched to subscription: \${SUB%%$'\t'*}\" && CHOSEN_SUB_ID=\"\${SUB##*$'\t'}\" && break; done" # Capture chosen ID
-echo " curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' |  bash -s -- --subscription-id \${SUB_ID} --client-id ${APP_ID} --location eastus"
-echo "----------------------------------------"
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' |  bash -s -- --subscription-id \${SUB_ID} --client-id ${APP_ID} --location eastus
 ```
 
 ### 3. For customized deployment
