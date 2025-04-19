@@ -1,18 +1,22 @@
-Central Threat Intelligence (CTI) Solution
-Quick Deployment
+# Central Threat Intelligence (CTI) Solution
+## Quick Deployment
 The fastest way to deploy this solution is using Azure Cloud Shell:
 
-Open Azure Cloud Shell (Bash mode)
-Create the app registration first:
-bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
+### Open Azure Cloud Shell (Bash mode)
+* Create the app registration first:
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
+```
+* Deploy the solution with the generated client ID:
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | tr -d '\r' | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
+```
+* For customized deployment:
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000" --advanced
+```
 
-Deploy the solution with the generated client ID:
-bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | tr -d '\r' | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
-
-
-For customized deployment:
-bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000" --advanced
-Solution Overview
+## Solution Overview
 The Central Threat Intelligence (CTI) solution creates a unified platform for collecting, managing, and operationalizing threat intelligence across your Microsoft security stack. It addresses the challenge of dispersed threat intelligence by creating a central repository with automated distribution.
 Architecture Components
 
@@ -23,7 +27,7 @@ Microsoft Sentinel Integration: Analytics rules and cross-workspace hunting
 Microsoft Defender XDR Integration: Direct indicator submission and alerting
 Unified Security Operations Portal: Integration with Microsoft's security platform
 
-Prerequisites
+## Prerequisites
 
 Azure Subscription: Active subscription with Contributor permissions
 Microsoft 365 E3/E5 License: For Microsoft Defender and Exchange Online
@@ -31,18 +35,20 @@ Microsoft Sentinel License: If enabling the Sentinel integration
 Microsoft Defender XDR License: For XDR integration features
 Microsoft Entra ID Application: With appropriate API permissions
 
-Required API Permissions
+## Required API Permissions
 The create-cti-app.sh script automatically registers an application with these permissions:
 APIPermission TypePermissionsMicrosoft Threat ProtectionApplicationIndicator.ReadWrite.AllMicrosoft GraphApplicationIdentityRiskyUser.ReadWrite.All, Policy.ReadWrite.ConditionalAccessOffice 365 Exchange OnlineApplicationThreatIntelligence.Read.All
-Post-Deployment Configuration
-1. Configure TAXII Feeds
+
+# Post-Deployment Configuration
+## 1. Configure TAXII Feeds
 
 Navigate to the CTI-TAXII2-Connector Logic App in the Azure Portal
 Add your TAXII server details to the Logic App
 Use the CTI_IntelligenceFeeds_CL table to store feed metadata
 
 Example feed metadata:
-kqllet FeedData = datatable(
+```kql
+let FeedData = datatable(
     FeedId_g:string,
     FeedName_s:string,
     FeedType_s:string,
@@ -66,8 +72,9 @@ kqllet FeedData = datatable(
     "TLP:AMBER",
     70
 ];
+```
 
-FeedData
+### FeedData
 2. Microsoft Defender Threat Intelligence
 The MDTI connector automatically pulls threat intelligence from Microsoft's premium feed, if enabled during deployment.
 3. Custom API Sources
