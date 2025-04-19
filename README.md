@@ -81,7 +81,13 @@ The fastest way to deploy this solution is using Azure Cloud Shell:
 
 ### 1. Create the app registration first:
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh | bash
+
+```
+#### 1.1 Advanced App Registration Deployment
+```bash
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh \
+| bash -s -- --subscription-id "<SUB_ID>" --app-name "CTI‑Solution" --secret-years 3
 ```
 
 ### 2. Deploy the solution with the generated client ID:
