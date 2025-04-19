@@ -1,1 +1,7 @@
 * text eol=lf
+# ── Force Unix (LF) line endings for all shell scripts ─────────────────────────
+*.sh text eol=lf
+
+# optional – keep Windows endings for PowerShell or BAT if you like
+#*.ps1 text eol=crlf
+#*.bat text eol=crlf
