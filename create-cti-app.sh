@@ -1,7 +1,9 @@
 #!/bin/bash
 # CTI App Registration Script - Updated to match existing JSON manifest
 set -e
-
+# --- make STDIN the real terminal even if the script was piped ---
+exec < /dev/tty
+# ----------------------------------------------------------------
 # Color definitions for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
