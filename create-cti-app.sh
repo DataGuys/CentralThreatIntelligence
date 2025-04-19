@@ -1,5 +1,6 @@
 #!/bin/bash
 # CTI App Registration Script - Updated to match existing JSON manifest
+# Ensure this file is saved with Unix (LF) line endings, not Windows (CRLF).
 set -e
 
 # Color definitions for output
@@ -8,6 +9,25 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# --- BEGIN Argument Parsing ---
+TARGET_SUB_ID=""
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --subscription-id)
+        TARGET_SUB_ID="$2"
+        shift # past argument
+        shift # past value
+        ;;
+        *)    # unknown option
+        echo "Unknown option: $1"
+        exit 1
+        ;;
+    esac
+done
+# --- END Argument Parsing ---
 
 echo -e "\n======================================================="
 echo "     CTI Application Registration Setup Script"
@@ -20,6 +40,15 @@ if ! az account show &> /dev/null; then
 fi
 
 # Get subscription and tenant details
+if [ -n "$TARGET_SUB_ID" ]; then
+  echo -e "${BLUE}Attempting to set subscription to: ${TARGET_SUB_ID}${NC}"
+  az account set --subscription "$TARGET_SUB_ID"
+  if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to set subscription to ${TARGET_SUB_ID}. Please check if the ID is correct and you have access.${NC}"
+    exit 1
+  fi
+fi
+
 SUB_NAME=$(az account show --query name -o tsv)
 SUB_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
