@@ -41,10 +41,10 @@ resource logAnalyticsQueryConnection 'Microsoft.Web/connections@2016-06-01' = {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'azuremonitorlogs')
     }
     parameterValues: {
-      token:TenantId: tenantId
-      token:clientId: appClientId
-      token:clientSecret: listSecrets(resourceId('Microsoft.KeyVault/vaults/secrets', keyVaultName, clientSecretName), '2023-02-01').value
-      token:grantType: 'client_credentials'
+      'token:TenantId': tenantId
+      'token:clientId': appClientId
+      'token:clientSecret': listSecrets(resourceId('Microsoft.KeyVault/vaults/secrets', keyVaultName, clientSecretName), '2023-02-01').value
+      'token:grantType': 'client_credentials'
     }
   }
 }
@@ -60,10 +60,10 @@ resource microsoftGraphConnection 'Microsoft.Web/connections@2016-06-01' = {
       id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'microsoftgraph')
     }
     parameterValues: {
-      token:TenantId: tenantId
-      token:clientId: appClientId
-      token:clientSecret: listSecrets(resourceId('Microsoft.KeyVault/vaults/secrets', keyVaultName, clientSecretName), '2023-02-01').value
-      token:grantType: 'client_credentials'
+      'token:TenantId': tenantId
+      'token:clientId': appClientId
+      'token:clientSecret': listSecrets(resourceId('Microsoft.KeyVault/vaults/secrets', keyVaultName, clientSecretName), '2023-02-01').value
+      'token:grantType': 'client_credentials'
     }
   }
 }

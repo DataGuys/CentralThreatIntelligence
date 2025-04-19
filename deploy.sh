@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
+#set -Eeuo pipefail
 trap 'echo -e "\e[31mError on line $LINENO\e[0m" >&2' ERR
 
 RAW='https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/main.bicep'
@@ -54,9 +54,9 @@ az deployment group create -g "$RG" \
   --name "cti-$(date +%s)" \
   --template-file main.bicep \
   --parameters clientId="$CLIENT_ID" \
-               workspaceName="$WS" \
-               enableSentinel=$ENABLE_SENTINEL \
-               enableMDTI=$ENABLE_MDTI \
-               enableSecurityCopilot=$ENABLE_COPILOT
+              workspaceName="$WS" \
+              enableSentinel=$ENABLE_SENTINEL \
+              enableMDTI=$ENABLE_MDTI \
+        enableSecurityCopilot=$ENABLE_COPILOT
 
 echo -e "\e[32m✔ CTI deployed to $RG ($WS)\e[0m"

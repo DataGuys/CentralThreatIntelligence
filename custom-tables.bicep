@@ -3,7 +3,7 @@ param ctiWorkspaceName string
 // Table schemas with modern structure aligned with STIX 2.1
 var tables = [
   {
-    name: 'CTI_IPIndicators_CL'
+    name: 'CTI_IPIndicators_CL', 
     columns: [
       { name: 'IPAddress_s', type: 'string' }
       { name: 'ConfidenceScore_d', type: 'double' }
@@ -28,7 +28,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_FileHashIndicators_CL'
+    name: 'CTI_FileHashIndicators_CL', 
     columns: [
       { name: 'SHA256_s', type: 'string' }
       { name: 'MD5_s', type: 'string' }
@@ -54,7 +54,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_DomainIndicators_CL'
+    name: 'CTI_DomainIndicators_CL', 
     columns: [
       { name: 'Domain_s', type: 'string' }
       { name: 'ConfidenceScore_d', type: 'double' }
@@ -77,7 +77,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_MutexIndicators_CL'
+    name: 'CTI_MutexIndicators_CL', 
     columns: [
       { name: 'MutexName_s', type: 'string' }
       { name: 'ConfidenceScore_d', type: 'double' }
@@ -101,7 +101,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_RegistryIndicators_CL'
+    name: 'CTI_RegistryIndicators_CL', 
     columns: [
       { name: 'RegistryPath_s', type: 'string' }
       { name: 'RegistryKey_s', type: 'string' }
@@ -127,7 +127,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_URLIndicators_CL'
+    name: 'CTI_URLIndicators_CL', 
     columns: [
       { name: 'URL_s', type: 'string' }
       { name: 'ConfidenceScore_d', type: 'double' }
@@ -150,7 +150,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_EmailIndicators_CL'
+    name: 'CTI_EmailIndicators_CL', 
     columns: [
       { name: 'EmailAddress_s', type: 'string' }
       { name: 'ConfidenceScore_d', type: 'double' }
@@ -173,7 +173,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_ThreatIntelIndicator_CL'
+    name: 'CTI_ThreatIntelIndicator_CL', 
     columns: [
       { name: 'Type_s', type: 'string' }
       { name: 'Value_s', type: 'string' }
@@ -202,7 +202,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_ThreatIntelObjects_CL'
+    name: 'CTI_ThreatIntelObjects_CL', 
     columns: [
       { name: 'ObjectId_g', type: 'guid' }
       { name: 'Type_s', type: 'string' }
@@ -224,7 +224,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_TransactionLog_CL'
+    name: 'CTI_TransactionLog_CL', 
     columns: [
       { name: 'IndicatorType_s', type: 'string' }
       { name: 'IndicatorValue_s', type: 'string' }
@@ -245,7 +245,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_IntelligenceFeeds_CL'
+    name: 'CTI_IntelligenceFeeds_CL', 
     columns: [
       { name: 'FeedId_g', type: 'guid' }
       { name: 'FeedName_s', type: 'string' }
@@ -267,7 +267,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_AnalyticsFeedback_CL'
+    name: 'CTI_AnalyticsFeedback_CL', 
     columns: [
       { name: 'FeedbackId_g', type: 'guid' }
       { name: 'IndicatorId_g', type: 'guid' }
@@ -286,7 +286,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_TacticsTechniques_CL'
+    name: 'CTI_TacticsTechniques_CL', 
     columns: [
       { name: 'IndicatorId_g', type: 'guid' }
       { name: 'IndicatorValue_s', type: 'string' }
@@ -303,7 +303,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_ThreatActors_CL'
+    name: 'CTI_ThreatActors_CL', 
     columns: [
       { name: 'ActorId_g', type: 'guid' }
       { name: 'Name_s', type: 'string' }
@@ -324,7 +324,7 @@ var tables = [
     ]
   }
   {
-    name: 'CTI_Campaigns_CL'
+    name: 'CTI_Campaigns_CL', 
     columns: [
       { name: 'CampaignId_g', type: 'guid' }
       { name: 'Name_s', type: 'string' }
