@@ -1,99 +1,119 @@
-# Integration with Microsoft's Unified Security Operations Portal
+Central Threat Intelligence (CTI) Solution
+Quick Deployment
+The fastest way to deploy this solution is using Azure Cloud Shell:
 
-## Overview
+Open Azure Cloud Shell (Bash mode)
+Create the app registration first:
+bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
 
-Microsoft's unified security operations platform integrates Microsoft Sentinel and Microsoft Defender XDR into a single, cohesive security operations experience. This guide outlines how to connect your Central Threat Intelligence (CTI) solution to this unified platform.
+Deploy the solution with the generated client ID:
+bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | tr -d '\r' | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
 
-## Prerequisites
 
-1. A Microsoft 365 E5 license or equivalent that includes Microsoft Sentinel and Microsoft Defender XDR
-2. Global Administrator or Security Administrator privileges
-3. The deployed CTI solution with:
-   - CTI Log Analytics Workspace
-   - Microsoft Sentinel enabled on the workspace (if using the workspace as the primary Sentinel instance)
+For customized deployment:
+bashcurl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000" --advanced
+Solution Overview
+The Central Threat Intelligence (CTI) solution creates a unified platform for collecting, managing, and operationalizing threat intelligence across your Microsoft security stack. It addresses the challenge of dispersed threat intelligence by creating a central repository with automated distribution.
+Architecture Components
 
-## Integration Options
+Central Log Analytics Workspace: Dedicated repository for all threat intelligence data
+Custom Data Tables: Specialized schema for different IOC types (IP, Domain, URL, FileHash)
+Automated Logic Apps: Workflow automation for IOC distribution and management
+Microsoft Sentinel Integration: Analytics rules and cross-workspace hunting
+Microsoft Defender XDR Integration: Direct indicator submission and alerting
+Unified Security Operations Portal: Integration with Microsoft's security platform
 
-There are two primary methods for integrating your CTI solution with the unified SecOps platform:
+Prerequisites
 
-### Option 1: Direct Integration via Log Analytics Workspace (Recommended)
+Azure Subscription: Active subscription with Contributor permissions
+Microsoft 365 E3/E5 License: For Microsoft Defender and Exchange Online
+Microsoft Sentinel License: If enabling the Sentinel integration
+Microsoft Defender XDR License: For XDR integration features
+Microsoft Entra ID Application: With appropriate API permissions
 
-This approach adds your CTI Log Analytics workspace directly to the Microsoft Defender portal.
+Required API Permissions
+The create-cti-app.sh script automatically registers an application with these permissions:
+APIPermission TypePermissionsMicrosoft Threat ProtectionApplicationIndicator.ReadWrite.AllMicrosoft GraphApplicationIdentityRiskyUser.ReadWrite.All, Policy.ReadWrite.ConditionalAccessOffice 365 Exchange OnlineApplicationThreatIntelligence.Read.All
+Post-Deployment Configuration
+1. Configure TAXII Feeds
 
-#### Implementation Steps:
+Navigate to the CTI-TAXII2-Connector Logic App in the Azure Portal
+Add your TAXII server details to the Logic App
+Use the CTI_IntelligenceFeeds_CL table to store feed metadata
 
-1. **Enable Microsoft Sentinel on your CTI workspace** (if not already done)
-   - This is configured in the Bicep template with the `enableSentinelIntegration` parameter
+Example feed metadata:
+kqllet FeedData = datatable(
+    FeedId_g:string,
+    FeedName_s:string,
+    FeedType_s:string,
+    FeedURL_s:string,
+    CollectionId_s:string,
+    EncodedCredentials_s:string,
+    Description_s:string,
+    Category_s:string,
+    TLP_s:string,
+    ConfidenceScore_d:double
+)
+[
+    "00000000-0000-0000-0000-000000000000",
+    "MISP Community Feed",
+    "TAXII",
+    "https://taxii.example.org",
+    "collection-id",
+    "base64_encoded_credentials",
+    "MISP Community TAXII Feed",
+    "Community",
+    "TLP:AMBER",
+    70
+];
 
-2. **Connect the CTI workspace to the Microsoft Defender portal**:
-   - Navigate to the [Microsoft Defender portal](https://security.microsoft.com)
-   - Select **Settings** > **Microsoft Sentinel** > **Connect workspace**
-   - Select your CTI workspace from the list of available workspaces
-   - If prompted, designate whether this is your primary workspace
+FeedData
+2. Microsoft Defender Threat Intelligence
+The MDTI connector automatically pulls threat intelligence from Microsoft's premium feed, if enabled during deployment.
+3. Custom API Sources
+To integrate custom API feeds:
 
-3. **Configure workspace roles and permissions**:
-   - Ensure the appropriate users have the necessary permissions to access the CTI data
-   - Configure proper Azure RBAC roles for the CTI workspace
+Create a custom Logic App for your API source
+Use the existing table schemas for storing indicators
+Follow the same pattern as the TAXII connector for authentication and data insertion
 
-### Option 2: Cross-Workspace Integration
+Operational Tasks
+Indicator Management
 
-If you already have a primary Microsoft Sentinel workspace in the unified SecOps portal, you can integrate your CTI workspace through cross-workspace queries.
+Expiration Handling: The Housekeeping Logic App automatically manages indicator lifecycle
+Confidence Updates: Use the Analytics Feedback table to adjust confidence scores
+Manual Updates: Use Sentinel workbooks to manage indicators directly
 
-#### Implementation Steps:
+Monitoring Feed Health
 
-1. **Connect your primary Sentinel workspace to the Microsoft Defender portal** (if not already done)
+Access the "CTI - Feed Health" workbook in Sentinel
+Monitor feed reliability, indicator freshness, and distribution success rates
 
-2. **Configure cross-workspace queries**:
-   - Use the `workspace()` function in KQL to query across both workspaces
-   - Example:
-     ```kql
-     let CTIWorkspaceId = "<your-cti-workspace-resource-id>";
-     
-     workspace(CTIWorkspaceId).CTI_IPIndicators_CL
-     | where ConfidenceScore_d >= 80
-     | project IPAddress_s, ThreatType_s, SourceFeed_s
-     ```
+Tracking Detections
 
-3. **Create Sentinel Analytics Rules using cross-workspace queries**:
-   - Navigate to Microsoft Sentinel > Analytics
-   - Create new scheduled analytics rules that use cross-workspace queries
-   - These rules will generate alerts and incidents in your primary workspace
+Run the provided KQL queries for threat detection and analysis
+Monitor the CTI analytics rules in Sentinel
+Check the transaction logs for successful IOC distribution
 
-## Recommended Configuration
+Troubleshooting
+Common Issues
 
-### For New Deployments:
+Logic App Failures:
 
-1. Deploy the CTI solution with `enableSentinelIntegration = true`
-2. Connect the CTI workspace directly to the Microsoft Defender portal (Option 1)
-3. Configure the CTI workspace as a secondary workspace if you already have a primary Sentinel workspace
+Check application permissions
+Verify key vault access
+Review Logic App run history
 
-### For Existing Sentinel Deployments:
 
-1. Deploy the CTI solution with `enableSentinelIntegration = true`
-2. Use the cross-workspace query approach (Option 2)
-3. Configure the data connector in your primary workspace to ingest alerts from the CTI workspace
+Data Ingestion Issues:
 
-## Verifying Integration
+Validate table schemas
+Check for rate limiting
+Ensure proper formatting of data
 
-After integrating your CTI workspace with the unified SecOps portal:
 
-1. **Verify Data Access**:
-   - Navigate to Microsoft Defender portal > Hunting
-   - Run a simple query against your CTI tables (e.g., `CTI_IPIndicators_CL | limit 10`)
-   - Confirm that data is accessible
+Integration Problems:
 
-2. **Test Cross-Workspace Functionality**:
-   - If using Option 2, test a cross-workspace query to ensure it returns results
-   - Verify that analytics rules using cross-workspace queries generate alerts properly
-
-3. **Check Incident Generation**:
-   - Confirm that CTI-related incidents appear in your unified incident queue
-
-## Additional Capabilities
-
-Once integration is complete, you can leverage these unified SecOps capabilities:
-
-1. **AI-assisted investigation** with Microsoft Security Copilot
-2. **Unified incident management** across Sentinel and Defender XDR
-3. **Cross-domain hunting** using Advanced Hunting
-4. **Automated response** with Sentinel playbooks and Defender automated investigation
+Verify API endpoints
+Check authentication credentials
+Review network connectivity
