@@ -5,7 +5,47 @@
 
 targetScope = 'resourceGroup'
 
-// Import parameters from parameters.bicep
+// Parameters
+@description('Location for all resources.')
+param location string = resourceGroup().location
+
+@description('Name of the Log Analytics workspace for CTI')
+param ctiWorkspaceName string = 'CTI-Workspace'
+
+@description('Enable Microsoft Defender Threat Intelligence integration')
+param enableMDTI bool = true
+
+@description('Enable Microsoft Security Copilot integration')
+param enableSecurityCopilot bool = false
+
+@description('Enable Microsoft Sentinel integration with the CTI workspace')
+param enableSentinelIntegration bool = true
+
+@description('Enable Sentinel Analytics Rules for threat intelligence')
+param enableAnalyticsRules bool = true
+
+@description('Enable Sentinel Hunting Queries for threat intelligence')
+param enableHuntingQueries bool = true
+
+@description('Microsoft Entra App ID for API authentication')
+param appClientId string
+
+@description('Microsoft Entra Tenant ID')
+param tenantId string = subscription().tenantId
+
+@description('Initial value for client secret (should be replaced post-deployment for production)')
+@secure()
+param clientSecret string = ''
+
+@description('Tag values for resources')
+param tags object = {
+  solution: 'CentralThreatIntelligence'
+  environment: 'Production'
+  createdBy: 'Bicep'
+  deploymentDate: utcNow('yyyy-MM-dd')
+}
+
+// Import parameters module
 module parameters './parameters.bicep' = {
   name: 'parameters'
 }
@@ -14,27 +54,22 @@ module parameters './parameters.bicep' = {
 module coreInfrastructure './core-infrastructure.bicep' = {
   name: 'coreInfrastructure'
   params: {
-    location: parameters.outputs.location
-    ctiWorkspaceName: parameters.outputs.ctiWorkspaceName
+    location: location
+    ctiWorkspaceName: ctiWorkspaceName
     ctiWorkspaceRetentionInDays: 90
     ctiWorkspaceDailyQuotaGb: 5
     ctiWorkspaceSku: 'PerGB2018'
     keyVaultName: parameters.outputs.keyVaultName
     clientSecretName: 'clientSecret'
-    initialClientSecret: ''
-    tenantId: subscription().tenantId
+    initialClientSecret: clientSecret
+    tenantId: tenantId
     managedIdentityName: parameters.outputs.managedIdentityName
     allowedIpAddresses: []
     allowedSubnetIds: []
     logicAppServicePlanName: parameters.outputs.logicAppServicePlanName
     logicAppSku: 'WS1'
     maxElasticWorkerCount: 10
-    tags: {
-      solution: 'CentralThreatIntelligence'
-      environment: 'Production'
-      createdBy: 'Bicep'
-      deploymentDate: utcNow('yyyy-MM-dd')
-    }
+    tags: tags
   }
 }
 
@@ -42,7 +77,7 @@ module coreInfrastructure './core-infrastructure.bicep' = {
 module customTables './custom-tables.bicep' = {
   name: 'customTables'
   params: {
-    ctiWorkspaceName: parameters.outputs.ctiWorkspaceName
+    ctiWorkspaceName: ctiWorkspaceName
   }
   dependsOn: [
     coreInfrastructure
@@ -53,18 +88,13 @@ module customTables './custom-tables.bicep' = {
 module apiConnections './api-connections.bicep' = {
   name: 'apiConnections'
   params: {
-    location: parameters.outputs.location
-    ctiWorkspaceName: parameters.outputs.ctiWorkspaceName
+    location: location
+    ctiWorkspaceName: ctiWorkspaceName
     keyVaultName: parameters.outputs.keyVaultName
     clientSecretName: 'clientSecret'
-    tenantId: subscription().tenantId
-    appClientId: 'REPLACE_WITH_APP_CLIENT_ID' // Replace with actual client ID
-    tags: {
-      solution: 'CentralThreatIntelligence'
-      environment: 'Production'
-      createdBy: 'Bicep'
-      deploymentDate: utcNow('yyyy-MM-dd')
-    }
+    tenantId: tenantId
+    appClientId: appClientId
+    tags: tags
     logAnalyticsDataCollectorConnectionName: parameters.outputs.logAnalyticsDataCollectorConnectionName
     logAnalyticsQueryConnectionName: parameters.outputs.logAnalyticsQueryConnectionName
     microsoftGraphConnectionName: parameters.outputs.microsoftGraphConnectionName
@@ -75,56 +105,46 @@ module apiConnections './api-connections.bicep' = {
   ]
 }
 
-// TAXII Connector
-module taxiiConnector 'logic-apps/taxii-connector.bicep' = {
-  name: 'taxiiConnector'
+// Logic Apps
+module logicApps 'logic-apps/deployment.bicep' = {
+  name: 'logicApps'
   params: {
-    location: parameters.outputs.location
-    taxiiConnectorLogicAppName: 'CTI-TAXII2-Connector'
+    location: location
     managedIdentityId: coreInfrastructure.outputs.managedIdentityId
     logAnalyticsConnectionId: apiConnections.outputs.logAnalyticsConnectionId
     logAnalyticsQueryConnectionId: apiConnections.outputs.logAnalyticsQueryConnectionId
-    ctiWorkspaceName: parameters.outputs.ctiWorkspaceName
-    diagnosticSettingsRetentionDays: 30
+    microsoftGraphConnectionId: apiConnections.outputs.microsoftGraphConnectionId
+    ctiWorkspaceName: ctiWorkspaceName
     ctiWorkspaceId: coreInfrastructure.outputs.ctiWorkspaceId
-    tags: {
-      solution: 'CentralThreatIntelligence'
-      environment: 'Production'
-      createdBy: 'Bicep'
-      deploymentDate: utcNow('yyyy-MM-dd')
-    }
+    keyVaultName: parameters.outputs.keyVaultName
+    clientSecretName: 'clientSecret'
+    appClientId: appClientId
+    tenantId: tenantId
+    securityApiBaseUrl: parameters.outputs.securityApiBaseUrl
+    enableMDTI: enableMDTI
+    enableSecurityCopilot: enableSecurityCopilot
+    dceNameForCopilot: parameters.outputs.dceNameForCopilot
+    dceCopilotIntegrationName: parameters.outputs.dceCopilotIntegrationName
+    diagnosticSettingsRetentionDays: 30
+    tags: tags
   }
   dependsOn: [
     apiConnections
   ]
 }
 
-// Additional Logic App modules would be referenced here following the same pattern
-// module defenderConnector 'logic-apps/defender-connector.bicep' = {...}
-// module mdtiConnector 'logic-apps/mdti-connector.bicep' = {...}
-// module entraConnector 'logic-apps/entra-connector.bicep' = {...}
-// module exoConnector 'logic-apps/exo-connector.bicep' = {...}
-// module securityCopilotConnector 'logic-apps/copilot-connector.bicep' = {...}
-// module housekeeping 'logic-apps/housekeeping.bicep' = {...}
-// module threatFeedSync 'logic-apps/threatfeed-sync.bicep' = {...}
-
-// Sentinel Integration - Conditional based on the enableSentinelIntegration parameter
+// Sentinel Integration
 module sentinelIntegration './sentinel-integration.bicep' = {
   name: 'sentinelIntegration'
   params: {
-    ctiWorkspaceName: parameters.outputs.ctiWorkspaceName
+    ctiWorkspaceName: ctiWorkspaceName
     ctiWorkspaceId: coreInfrastructure.outputs.ctiWorkspaceId
-    location: parameters.outputs.location
-    enableSentinelIntegration: true
-    enableAnalyticsRules: true
-    enableHuntingQueries: true
+    location: location
+    enableSentinelIntegration: enableSentinelIntegration
+    enableAnalyticsRules: enableAnalyticsRules
+    enableHuntingQueries: enableHuntingQueries
     existingSentinelWorkspaceId: ''
-    tags: {
-      solution: 'CentralThreatIntelligence'
-      environment: 'Production'
-      createdBy: 'Bicep'
-      deploymentDate: utcNow('yyyy-MM-dd')
-    }
+    tags: tags
   }
   dependsOn: [
     customTables
@@ -133,9 +153,8 @@ module sentinelIntegration './sentinel-integration.bicep' = {
 
 // Main outputs
 output ctiWorkspaceId string = coreInfrastructure.outputs.ctiWorkspaceId
-output ctiWorkspaceName string = parameters.outputs.ctiWorkspaceName
+output ctiWorkspaceName string = ctiWorkspaceName
 output keyVaultName string = parameters.outputs.keyVaultName
 output managedIdentityId string = coreInfrastructure.outputs.managedIdentityId
 output managedIdentityPrincipalId string = coreInfrastructure.outputs.managedIdentityPrincipalId
-output taxiiConnectorName string = taxiiConnector.outputs.taxiiConnectorName
-// Additional connector outputs would be added here
+output logicAppNames object = logicApps.outputs.logicAppNames
