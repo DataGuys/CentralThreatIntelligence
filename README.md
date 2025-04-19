@@ -9,7 +9,11 @@ curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/re
 ```
 * Deploy the solution with the generated client ID:
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | tr -d '\r' | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh)" \
+  -- --subscription-name "MySubscription" \
+     --resource-group MyRG \
+     --location eastus \
+     --client-id 00000000-0000-0000-0000-000000000000
 ```
 * For customized deployment:
 ```bash
