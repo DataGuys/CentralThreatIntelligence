@@ -1,7 +1,7 @@
 # Central Threat Intelligence (CTI) Solution
 
 # Disclaimer
-## **IMPORTANT**: This is **NOT** an official Microsoft product or solution. This project is a third-party custom implementation for centralizing threat intelligence across Microsoft security products. You assume all risk by implementing then maintaining this solution yourself.
+## **IMPORTANT**: This is **NOT** an official Microsoft product or solution. This project is a third-party custom implementation for centralizing threat intelligence across Microsoft security products. You assume all risk by implementing then maintaining this solution, consider this your warning.
 
 ## Overview
 The Central Threat Intelligence (CTI) solution provides a unified platform for collecting, managing, and operationalizing threat intelligence across your organization's security ecosystem. It addresses the challenge of scattered threat intelligence by creating a centralized repository with automated distribution capabilities.
