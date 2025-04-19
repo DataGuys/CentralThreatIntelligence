@@ -91,7 +91,7 @@ The fastest way to deploy this solution is using Azure Cloud Shell:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/create-cti-app.sh \
-| bash -s -- --app-name "CTI-Solution" --secret-years 3
+| bash -s
 ```
 
 ### 2. Deploy the solution with the generated client ID
