@@ -97,11 +97,9 @@ curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/ma
 ### 2. Deploy the solution with the generated client ID
 
 ```bash
-PS3='Select subscription: '; mapfile -t SUBS < <(az account list --query "[].{name:name,id:id}" -o tsv); select SUB in "${SUBS[@]}"; do [[ -n $SUB ]] && az account set --subscription "${SUB##*$'\t'}" && echo "Switched to subscription: ${SUB%%$'\t'*}" && break; done
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh) | tr -d '\r'|" \
--- --resource-group "CTI-RG" \
---location "eastus" \
---client-id "00000000-0000-0000-0000-000000000000"
+SUB_ID=\"\"; PS3='Select subscription: '; mapfile -t SUBS < <(az account list --query \"[].{name:name,id:id}\" -o tsv); select SUB in \"\${SUBS[@]}\"; do [[ -n \$SUB ]] && az account set --subscription \"\${SUB##*$'\t'}\" && echo \"Switched to subscription: \${SUB%%$'\t'*}\" && CHOSEN_SUB_ID=\"\${SUB##*$'\t'}\" && break; done" # Capture chosen ID
+echo " curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | tr -d '\r' |  bash -s -- --subscription-id \${SUB_ID} --client-id ${APP_ID} --location eastus"
+echo "----------------------------------------"
 ```
 
 ### 3. For customized deployment
