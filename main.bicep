@@ -1,56 +1,42 @@
-// Advanced Central Threat Intelligence (CTI) Solution
-// This template deploys a comprehensive threat intelligence platform
-// Version: 2.0
-// Last Updated: April 2025
+// Advanced Central Threat Intelligence (CTI) Solution – v2.1
+// Updated: 2025‑04‑19 – removed utcNow() from parameter default
 
 targetScope = 'resourceGroup'
 
-// Parameters
 @description('Location for all resources.')
 param location string = resourceGroup().location
 
 @description('Name of the Log Analytics workspace for CTI')
 param ctiWorkspaceName string = 'CTI-Workspace'
 
-@description('Enable Microsoft Defender Threat Intelligence integration')
 param enableMDTI bool = true
-
-@description('Enable Microsoft Security Copilot integration')
 param enableSecurityCopilot bool = false
-
-@description('Enable Microsoft Sentinel integration with the CTI workspace')
 param enableSentinelIntegration bool = true
-
-@description('Enable Sentinel Analytics Rules for threat intelligence')
 param enableAnalyticsRules bool = true
-
-@description('Enable Sentinel Hunting Queries for threat intelligence')
 param enableHuntingQueries bool = true
 
-@description('Microsoft Entra App ID for API authentication')
 param appClientId string
-
-@description('Microsoft Entra Tenant ID')
 param tenantId string = subscription().tenantId
 
-@description('Initial value for client secret (should be replaced post-deployment for production)')
 @secure()
 param clientSecret string = ''
 
-@description('Tag values for resources')
-param tags object = {
+@description('Base set of tags applied to all resources')
+param baseTags object = {
   solution: 'CentralThreatIntelligence'
   environment: 'Production'
   createdBy: 'Bicep'
-  deploymentDate: utcNow('yyyy-MM-dd')
 }
 
-// Import parameters module
+var deploymentDate = utcNow('yyyy-MM-dd')
+var tags = union(baseTags, {
+  deploymentDate: deploymentDate
+})
+
 module parameters './parameters.bicep' = {
   name: 'parameters'
 }
 
-// Core Infrastructure
 module coreInfrastructure './core-infrastructure.bicep' = {
   name: 'coreInfrastructure'
   params: {
@@ -73,18 +59,14 @@ module coreInfrastructure './core-infrastructure.bicep' = {
   }
 }
 
-// Custom Tables
 module customTables './custom-tables.bicep' = {
   name: 'customTables'
   params: {
     ctiWorkspaceName: ctiWorkspaceName
   }
-  dependsOn: [
-    coreInfrastructure
-  ]
+  dependsOn: [ coreInfrastructure ]
 }
 
-// API Connections
 module apiConnections './api-connections.bicep' = {
   name: 'apiConnections'
   params: {
@@ -99,13 +81,9 @@ module apiConnections './api-connections.bicep' = {
     logAnalyticsQueryConnectionName: parameters.outputs.logAnalyticsQueryConnectionName
     microsoftGraphConnectionName: parameters.outputs.microsoftGraphConnectionName
   }
-  dependsOn: [
-    coreInfrastructure
-    customTables
-  ]
+  dependsOn: [ coreInfrastructure, customTables ]
 }
 
-// Logic Apps
 module logicApps 'logic-apps/deployment.bicep' = {
   name: 'logicApps'
   params: {
@@ -128,12 +106,9 @@ module logicApps 'logic-apps/deployment.bicep' = {
     diagnosticSettingsRetentionDays: 30
     tags: tags
   }
-  dependsOn: [
-    apiConnections
-  ]
+  dependsOn: [ apiConnections ]
 }
 
-// Sentinel Integration
 module sentinelIntegration './sentinel-integration.bicep' = {
   name: 'sentinelIntegration'
   params: {
@@ -146,12 +121,9 @@ module sentinelIntegration './sentinel-integration.bicep' = {
     existingSentinelWorkspaceId: ''
     tags: tags
   }
-  dependsOn: [
-    customTables
-  ]
+  dependsOn: [ customTables ]
 }
 
-// Main outputs
 output ctiWorkspaceId string = coreInfrastructure.outputs.ctiWorkspaceId
 output ctiWorkspaceName string = ctiWorkspaceName
 output keyVaultName string = parameters.outputs.keyVaultName
