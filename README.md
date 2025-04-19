@@ -1,13 +1,90 @@
 # Central Threat Intelligence (CTI) Solution
-## Quick Deployment
+
+## Disclaimer
+**IMPORTANT**: This is **NOT** an official Microsoft product or solution. This project is a third-party custom implementation for centralizing threat intelligence across Microsoft security products.
+
+## Overview
+The Central Threat Intelligence (CTI) solution provides a unified platform for collecting, managing, and operationalizing threat intelligence across your organization's security ecosystem. It addresses the challenge of scattered threat intelligence by creating a centralized repository with automated distribution capabilities.
+
+A cyber threat intelligence platform serves as a centralized tool that collects, processes, and analyzes threat data from various sources, providing actionable insights into potential cyber risks. This solution implements this concept specifically for organizations using Microsoft security products.
+
+## Key Features
+
+### Centralized Intelligence Repository
+- Dedicated Log Analytics workspace for storing all threat intelligence data
+- Custom tables with specialized schemas for different indicator types (IP, Domain, URL, FileHash)
+- Standardized data format aligned with STIX 2.1 for interoperability
+
+### Multi-Source Intelligence Collection
+- TAXII 2.0 connector for consuming industry-standard threat feeds
+- Microsoft Defender Threat Intelligence integration (optional)
+- Manual indicator submission through custom workbooks
+- Support for custom API sources and CSV feeds
+
+### Automated Distribution to Security Controls
+- Microsoft Defender XDR integration for endpoint protection
+- Microsoft Entra ID (formerly Azure AD) integration for identity risk management
+- Exchange Online integration for email security
+- Microsoft Sentinel integration for SIEM and XDR capabilities
+
+### Advanced Analysis Capabilities
+- Cross-table correlation through KQL queries
+- MITRE ATT&CK mapping for TTPs
+- Confidence scoring and automatic feedback loop
+- Temporal analysis with first/last seen timestamps
+
+### Lifecycle Management
+- Automated expiration of indicators
+- Confidence score adjustment based on false positives/negatives
+- Historical analysis capabilities
+- Performance metrics for feed quality assessment
+
+## Architecture Components
+
+1. **Core Infrastructure**
+   - Log Analytics workspace
+   - Key Vault for secrets
+   - User-assigned managed identities
+
+2. **Custom Data Tables**
+   - Specialized schemas for different IOC types
+   - Support for STIX 2.1 object model
+   - Extended properties for enrichment
+
+3. **Logic Apps for Integration**
+   - TAXII connector for industry feeds
+   - Defender connector for Microsoft security products
+   - Exchange Online connector for email security
+   - Automated housekeeping processes
+
+4. **Microsoft Sentinel Integration**
+   - Analytics rules for alerting
+   - Custom hunting queries
+   - Investigation workbooks
+
+5. **Unified Security Operations Portal**
+   - Integration with Microsoft Defender portal
+   - Cross-workspace query capabilities
+   - Interactive dashboards
+
+## Prerequisites
+
+- Azure Subscription with Contributor permissions
+- Microsoft 365 E3/E5 license (for Microsoft Defender and Exchange Online)
+- Microsoft Sentinel license (if enabling Sentinel integration)
+- Microsoft Defender XDR license (for XDR integration)
+- Microsoft Entra ID Application with appropriate API permissions
+
+## Deployment
+
 The fastest way to deploy this solution is using Azure Cloud Shell:
 
-### Open Azure Cloud Shell (Bash mode)
-* Create the app registration first:
+### 1. Create the app registration first:
 ```bash
 curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/create-cti-app.sh | tr -d '\r' | bash
 ```
-* Deploy the solution with the generated client ID:
+
+### 2. Deploy the solution with the generated client ID:
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh)" \
   -- --subscription-name "MySubscription" \
@@ -15,116 +92,120 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIn
      --location eastus \
      --client-id 00000000-0000-0000-0000-000000000000
 ```
-* For customized deployment:
+
+### 3. For customized deployment:
 ```bash
 curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000" --advanced
 ```
 
-## Solution Overview
-The Central Threat Intelligence (CTI) solution creates a unified platform for collecting, managing, and operationalizing threat intelligence across your Microsoft security stack. It addresses the challenge of dispersed threat intelligence by creating a central repository with automated distribution.
-Architecture Components
+## Post-Deployment Configuration
 
-Central Log Analytics Workspace: Dedicated repository for all threat intelligence data
-Custom Data Tables: Specialized schema for different IOC types (IP, Domain, URL, FileHash)
-Automated Logic Apps: Workflow automation for IOC distribution and management
-Microsoft Sentinel Integration: Analytics rules and cross-workspace hunting
-Microsoft Defender XDR Integration: Direct indicator submission and alerting
-Unified Security Operations Portal: Integration with Microsoft's security platform
+### 1. Configure TAXII Feeds
+The TAXII2 connector Logic App needs to be configured with your TAXII server details. Use the `CTI_IntelligenceFeeds_CL` table to store feed metadata.
 
-## Prerequisites
+### 2. Microsoft Defender Threat Intelligence
+If enabled during deployment, the MDTI connector will automatically pull threat intelligence from Microsoft's premium feed.
 
-Azure Subscription: Active subscription with Contributor permissions
-Microsoft 365 E3/E5 License: For Microsoft Defender and Exchange Online
-Microsoft Sentinel License: If enabling the Sentinel integration
-Microsoft Defender XDR License: For XDR integration features
-Microsoft Entra ID Application: With appropriate API permissions
+### 3. Custom API Sources
+To integrate custom API feeds, create a custom Logic App following the same pattern as the TAXII connector.
 
-## Required API Permissions
-The create-cti-app.sh script automatically registers an application with these permissions:
-APIPermission TypePermissionsMicrosoft Threat ProtectionApplicationIndicator.ReadWrite.AllMicrosoft GraphApplicationIdentityRiskyUser.ReadWrite.All, Policy.ReadWrite.ConditionalAccessOffice 365 Exchange OnlineApplicationThreatIntelligence.Read.All
+## Usage Examples
 
-# Post-Deployment Configuration
-## 1. Configure TAXII Feeds
+### Indicator Management
+- Use the provided workbooks for manual indicator management
+- Run the KQL queries in `CTI_Advanced_Queries.kql` for threat detection
+- Monitor the feed health through the "CTI - Feed Health" workbook
 
-Navigate to the CTI-TAXII2-Connector Logic App in the Azure Portal
-Add your TAXII server details to the Logic App
-Use the CTI_IntelligenceFeeds_CL table to store feed metadata
+### Tracking Detections
+- Monitor the CTI analytics rules in Sentinel
+- Review transaction logs for successful IOC distribution
 
-Example feed metadata:
-```kql
-let FeedData = datatable(
-    FeedId_g:string,
-    FeedName_s:string,
-    FeedType_s:string,
-    FeedURL_s:string,
-    CollectionId_s:string,
-    EncodedCredentials_s:string,
-    Description_s:string,
-    Category_s:string,
-    TLP_s:string,
-    ConfidenceScore_d:double
-)
-[
-    "00000000-0000-0000-0000-000000000000",
-    "MISP Community Feed",
-    "TAXII",
-    "https://taxii.example.org",
-    "collection-id",
-    "base64_encoded_credentials",
-    "MISP Community TAXII Feed",
-    "Community",
-    "TLP:AMBER",
-    70
-];
-```
+## Repository Structure
 
-### FeedData
-2. Microsoft Defender Threat Intelligence
-The MDTI connector automatically pulls threat intelligence from Microsoft's premium feed, if enabled during deployment.
-3. Custom API Sources
-To integrate custom API feeds:
+- `core-infrastructure.bicep`: Core Azure resources definition
+- `custom-tables.bicep`: Log Analytics table schemas
+- `api-connections.bicep`: API connections for Logic Apps
+- `logic-apps/`: Integration connectors for various sources
+- `sentinel-integration.bicep`: Microsoft Sentinel enablement
+- `CTI_Advanced_Queries.kql`: KQL queries for threat detection
+- `CTI-ManualIndicatorSubmission.workbook`: Workbook for manual IOC submission
 
-Create a custom Logic App for your API source
-Use the existing table schemas for storing indicators
-Follow the same pattern as the TAXII connector for authentication and data insertion
+## Areas for Improvement
 
-Operational Tasks
-Indicator Management
+Based on review, here are potential enhancements to consider:
 
-Expiration Handling: The Housekeeping Logic App automatically manages indicator lifecycle
-Confidence Updates: Use the Analytics Feedback table to adjust confidence scores
-Manual Updates: Use Sentinel workbooks to manage indicators directly
+1. **Error Handling**: Implement more robust error handling and retry logic in Logic Apps
+2. **Documentation**: Expand documentation on custom API integration
+3. **Testing Framework**: Add testing guidelines and validation procedures
+4. **Security Hardening**: Strengthen security posture with network isolation
+5. **Scaling Guidance**: Add recommendations for enterprise-scale deployments
+6. **Privacy Compliance**: Include GDPR/privacy considerations
+7. **Business Continuity**: Add disaster recovery guidance
+8. **Performance Optimization**: Add tuning guidance for high-volume environments
+9. **Cost Management**: Include cost estimation and optimization tips
+10. **Visualization**: Enhance dashboards and reporting capabilities
 
-Monitoring Feed Health
+## Comparison to Microsoft's Native Solutions
 
-Access the "CTI - Feed Health" workbook in Sentinel
-Monitor feed reliability, indicator freshness, and distribution success rates
+While Microsoft offers its own threat intelligence platforms like Microsoft Defender Threat Intelligence, this custom solution provides unique capabilities for centralization across all Microsoft security products. It serves as a complementary solution rather than a replacement.
 
-Tracking Detections
+Key differences from Microsoft's native offerings:
+- Centralized repository for all threat intelligence across products
+- Custom schema extensions beyond standard Microsoft formats
+- Dedicated workflows for specialized intelligence feeds
+- Enhanced correlation across different indicator types
+- Full control over data retention and processing logic
 
-Run the provided KQL queries for threat detection and analysis
-Monitor the CTI analytics rules in Sentinel
-Check the transaction logs for successful IOC distribution
+## Open Source Alternatives
 
-Troubleshooting
-Common Issues
+If you're looking for open-source alternatives, consider platforms like OpenCTI, which provides structured storage of threat intelligence using STIX2 standards. Other options include:
 
-Logic App Failures:
+- MISP: Malware Information Sharing Platform
+- TheHive: Security incident response platform
+- YETI: Your Everyday Threat Intelligence
+- GOSINT: Open source intelligence gathering platform
 
-Check application permissions
-Verify key vault access
-Review Logic App run history
+## Contact and Support
 
+This project is maintained by DataGuys. For questions or support, please open an issue on the GitHub repository.
 
-Data Ingestion Issues:
+## License
 
-Validate table schemas
-Check for rate limiting
-Ensure proper formatting of data
+This project is licensed under the MIT License - see the LICENSE file for details.
 
+---
 
-Integration Problems:
+I'll now provide my analysis and suggestions for improvements to the Central Threat Intelligence solution:
 
-Verify API endpoints
-Check authentication credentials
-Review network connectivity
+## Analysis and Recommendations
+
+After reviewing the repository, I found that the Central Threat Intelligence (CTI) solution represents a well-thought-out implementation for centralizing threat intelligence in Microsoft environments. However, there are several areas that could be improved:
+
+### Architecture Strengths
+1. **Comprehensive Integration**: The solution connects with multiple Microsoft security products, providing a unified view of threat intelligence.
+2. **Scalable Design**: The use of Bicep templates and modular architecture enables scaling from small to enterprise deployments.
+3. **Standardized Data Model**: The custom tables align with STIX 2.1, providing industry-standard formats.
+4. **Automation Focus**: Logic Apps provide no-code/low-code automation for intelligence processing.
+
+### Technical Gaps
+1. **Limited Error Handling**: The Logic App implementations could benefit from more robust error handling, particularly for API rate limits and transient failures.
+2. **Deployment Complexity**: The initialization process requires multiple steps that could be simplified.
+3. **Monitoring Gaps**: More comprehensive monitoring for the health of the overall solution is needed.
+4. **Limited Data Transformation**: Advanced enrichment and transformation capabilities could be expanded.
+
+### Feature Suggestions
+1. **Enhanced Machine Learning**: Implement ML models for threat scoring and prioritization.
+2. **API Gateway**: Add an API gateway for standardized access to the threat intelligence.
+3. **Threat Hunting Workbooks**: Develop more specialized hunting workbooks for different threat types.
+4. **Collaborative Analysis**: Add capabilities for security analysts to collaborate on investigations.
+5. **Integration with Open-Source Tools**: Expand beyond Microsoft products to integrate with tools like MISP or OpenCTI.
+
+### Documentation Improvements
+1. **Architecture Diagrams**: Add detailed architecture diagrams showing data flows.
+2. **Operational Guidance**: Include day-to-day operational procedures.
+3. **Troubleshooting Guide**: Develop comprehensive troubleshooting documentation.
+4. **Performance Tuning**: Add guidance on optimizing for high-volume environments.
+
+The solution offers a solid foundation but would benefit from these enhancements to reach enterprise-grade maturity. With proper implementation, this CTI solution could significantly improve an organization's threat intelligence capabilities across their Microsoft security stack.
+
+**TL;DR –** The Central Threat Intelligence (CTI) solution provides a comprehensive platform for collecting, managing, and operationalizing threat intelligence across Microsoft security products, though it could benefit from enhanced error handling, monitoring, and machine learning capabilities.
