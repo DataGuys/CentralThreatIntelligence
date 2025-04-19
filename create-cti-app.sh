@@ -254,7 +254,11 @@ echo "   - Click 'Grant admin consent for <your-tenant>'"
 echo -e "\n2. Run the CTI deployment script with your new client ID:"
 echo "   Copy and execute the following command:"
 echo "   ----------------------------------------"
-echo "   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh -o deploy.sh && chmod +x deploy.sh && ./deploy.sh --advanced --client-id \"${APP_ID}\""
+echo "   curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh | bash -s -- \\
+     --resource-group \"CTI-RG\" \\
+     --location \"eastus\" \\
+     --client-id \"${APP_ID}\"
+     # This will deploy to subscription: ${SUB_NAME} (${SUB_ID})"
 echo "   ----------------------------------------"
-
+echo "   ----------------------------------------"
 echo -e "\nYour app credentials have been saved to: cti-app-credentials.env"
