@@ -88,14 +88,14 @@ curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/re
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/main/deploy.sh)" \
   -- --subscription-name "MySubscription" \
-     --resource-group MyRG \
+     --resource-group CTI-RG \
      --location eastus \
      --client-id 00000000-0000-0000-0000-000000000000
 ```
 
 ### 3. For customized deployment:
 ```bash
-curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "MyRG" --location "westus2" --client-id "00000000-0000-0000-0000-000000000000" --advanced
+curl -sL https://raw.githubusercontent.com/DataGuys/CentralThreatIntelligence/refs/heads/main/deploy.sh | bash -s -- --resource-group "CTI-RG" --location "eastus" --client-id "00000000-0000-0000-0000-000000000000" --advanced
 ```
 
 ## Post-Deployment Configuration
