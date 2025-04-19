@@ -1,3 +1,5 @@
+// Microsoft Sentinel integration – fixed nesting & bumped API version
+
 param ctiWorkspaceName string
 param ctiWorkspaceId string
 param location string
@@ -7,7 +9,6 @@ param enableHuntingQueries bool
 param existingSentinelWorkspaceId string
 param tags object
 
-// Microsoft Sentinel integration (conditional)
 resource sentinelSolution 'Microsoft.OperationsManagement/solutions@2015-11-01-preview' = if (enableSentinelIntegration && empty(existingSentinelWorkspaceId)) {
   name: 'SecurityInsights(${ctiWorkspaceName})'
   location: location
@@ -23,16 +24,20 @@ resource sentinelSolution 'Microsoft.OperationsManagement/solutions@2015-11-01-p
   }
 }
 
-// Implement Analytics Rules if enabled
-resource analyticRules 'Microsoft.SecurityInsights/alertRules@2022-11-01' = if (enableAnalyticsRules && enableSentinelIntegration) {
-  name: 'CTI-ThreatIntelMatch'
-  scope: resourceId('Microsoft.OperationalInsights/workspaces', ctiWorkspaceName)
+// Existing workspace reference
+resource workspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = {
+  name: ctiWorkspaceName
+}
+
+resource analyticRule 'Microsoft.OperationalInsights/workspaces/providers/alertRules@2025-03-01' = if (enableSentinelIntegration && enableAnalyticsRules) {
+  parent: workspace
+  name: 'Microsoft.SecurityInsights/CTI-ThreatIntelMatch'
   kind: 'ThreatIntelligence'
   properties: {
     displayName: 'Threat Intelligence Indicator Match'
     enabled: true
+    severity: 'High'
     productFilter: 'Microsoft Sentinel'
-    severitiesFilter: ['High']
     sourceSettings: [
       {
         sourceId: 'Azure Sentinel'
@@ -41,18 +46,19 @@ resource analyticRules 'Microsoft.SecurityInsights/alertRules@2022-11-01' = if (
       }
     ]
   }
-  dependsOn: [
-    enableSentinelIntegration && empty(existingSentinelWorkspaceId) ? sentinelSolution : ctiWorkspaceId
-  ]
+  dependsOn: [ enableSentinelIntegration && empty(existingSentinelWorkspaceId) ? sentinelSolution : workspace ]
 }
 
-// Implement Hunting Queries if enabled
-resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = if (enableHuntingQueries && enableSentinelIntegration) {
-  name: '${ctiWorkspaceName}/CTI-DomainIOCMatch'
+resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = if (enableSentinelIntegration && enableHuntingQueries) {
+  parent: workspace
+  name: 'CTI-DomainIOCMatch'
   properties: {
     category: 'Hunting Queries'
     displayName: 'Domain IOC matches in DNS queries'
-    query: 'let iocs = CTI_DomainIndicators_CL | where Active_b == true;\nDnsEvents | where Name has_any (iocs)'
+    query: '''
+      let iocs = CTI_DomainIndicators_CL | where Active_b == true;
+      DnsEvents | where Name has_any (iocs)
+    '''
     version: 2
     tags: [
       {
