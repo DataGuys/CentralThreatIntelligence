@@ -5,7 +5,9 @@
 #  Version: 2.3   Date: 2025‑04‑18
 #
 set -eu  # exit on error or undefined var
-
+# --- make STDIN the real terminal even if the script was piped ---
+exec < /dev/tty
+# ----------------------------------------------------------------
 ########## Defaults ###########################################################
 SCRIPT_VERSION="2.3"
 RESOURCE_GROUP_NAME="CTI-ResourceGroup"
