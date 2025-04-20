@@ -8,11 +8,11 @@ param location string = resourceGroup().location
 @description('Name of the Log Analytics workspace for CTI')
 param ctiWorkspaceName string = 'CTI-Workspace'
 
-param enableMDTI bool = true
+param enableMDTI bool = false
 param enableSecurityCopilot bool = false
-param enableSentinelIntegration bool = true
-param enableAnalyticsRules bool = true
-param enableHuntingQueries bool = true
+param enableSentinelIntegration bool = false
+param enableAnalyticsRules bool = false
+param enableHuntingQueries bool = false
 
 @description('Application (client) ID for the service principal')
 param appClientId string
