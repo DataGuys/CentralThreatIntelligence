@@ -87,7 +87,7 @@ module apiConnections './api-connections.bicep' = {
     logAnalyticsQueryConnectionName: parameters.outputs.logAnalyticsQueryConnectionName
     microsoftGraphConnectionName: parameters.outputs.microsoftGraphConnectionName
   }
-  dependsOn: [ coreInfrastructure, customTables ]
+  dependsOn: [ coreInfrastructure ]
 }
 
 module logicApps 'logic-apps/deployment.bicep' = {
