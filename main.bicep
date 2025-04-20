@@ -65,13 +65,13 @@ module coreInfrastructure './core-infrastructure.bicep' = {
   }
 }
 
-module customTables './custom-tables.json' = {
-  name: 'customTables'
-  params: {
-    ctiWorkspaceName: ctiWorkspaceName
-  }
-  dependsOn: [ coreInfrastructure ]
-}
+//module customTables './custom-tables.json' = {
+//  name: 'customTables'
+//  params: {
+//    ctiWorkspaceName: ctiWorkspaceName
+//  }
+//  dependsOn: [ coreInfrastructure ]
+//}
 
 module apiConnections './api-connections.bicep' = {
   name: 'apiConnections'
