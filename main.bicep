@@ -128,19 +128,19 @@ module sentinelIntegration './sentinel-integration.bicep' = {
   }
 }
 
-resource ctiDashboardWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
-  name: 'CTIDashboard-${ctiWorkspaceName}' // Unique name for the workbook
-  location: location
-  tags: tags
-  kind: 'shared' // Or 'user' depending on requirement
-  properties: {
-    displayName: 'CTI Dashboard'
-    serializedData: loadTextContent('./CTI-ManualIndicatorSubmission.workbook') // Assuming content is moved to a separate file
-    category: 'workbook' // Standard category for workbooks
-    sourceId: coreInfrastructure.outputs.ctiWorkspaceId // Link workbook to the Log Analytics workspace
-    version: 'Notebook/1.0' // Optional: Specify workbook version if needed
-  }
-}
+//resource ctiDashboardWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
+//  name: 'CTIDashboard-${ctiWorkspaceName}' // Unique name for the workbook
+//  location: location
+//  tags: tags
+//  kind: 'shared' // Or 'user' depending on requirement
+//  properties: {
+//    displayName: 'CTI Dashboard'
+//    serializedData: loadTextContent('./CTI-ManualIndicatorSubmission.workbook') // Assuming content is moved to a separate file
+//    category: 'workbook' // Standard category for workbooks
+//    sourceId: coreInfrastructure.outputs.ctiWorkspaceId // Link workbook to the Log Analytics workspace
+//    version: 'Notebook/1.0' // Optional: Specify workbook version if needed
+//  }
+//}
 
 // Note: The large JSON content for the workbook has been moved to a separate file 'workbook-content.json'
 // Create a file named 'workbook-content.json' in the same directory and paste the JSON content into it.
