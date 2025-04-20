@@ -28,7 +28,7 @@ param clientSecret string = ''
 param baseTags object = {
   solution: 'CentralThreatIntelligence'
   environment: 'Production'
-  createdBy: 'Bicep'
+  createdBy: 'Bicep Template'
 }
 
 @description('Current UTC date in yyyy-MM-dd format')
