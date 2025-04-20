@@ -126,7 +126,6 @@ module sentinelIntegration './sentinel-integration.bicep' = {
     existingSentinelWorkspaceId: ''
     tags: tags
   }
-  dependsOn: [ customTables ]
 }
 
 resource ctiDashboardWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
