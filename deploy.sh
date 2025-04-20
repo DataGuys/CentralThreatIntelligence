@@ -145,6 +145,26 @@ az deployment group create \
   --template-file main.bicep \
   --parameters "@$PARAM_FILE"
 
+# Add after the main deployment is complete, likely around line 145 in deploy.sh
+if [ $? -eq 0 ]; then
+  log "Main deployment completed successfully. Deploying custom tables..."
+  
+  # Make the custom tables script executable
+  chmod +x deploy-custom-tables.sh
+  
+  # Execute the custom tables deployment
+  ./deploy-custom-tables.sh "$RESOURCE_GROUP_NAME" "$WORKSPACE_NAME"
+  
+  if [ $? -eq 0 ]; then
+    log "${GREEN}Custom tables deployment completed successfully!${NC}"
+  else
+    log "${RED}Custom tables deployment failed. Please check the errors and try deploying them manually.${NC}"
+    exit 1
+  fi
+else
+  log "${RED}Main deployment failed. Not proceeding with custom tables deployment.${NC}"
+  exit 1
+fi
 log "${GREEN}Deployment complete!${NC}"
 log "Your Log Analytics workspace: $WORKSPACE_NAME in $RESOURCE_GROUP_NAME"
 
