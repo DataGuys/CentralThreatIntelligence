@@ -37,22 +37,24 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existin
 // - File hash: 'ea862697-47e1-4940-a55a-fe66610df9e5'
 // - URL: 'ac9a37e1-18be-455e-b05c-94889875ed09'
 // Choose one appropriate template or create multiple rule resources if needed.
-var threatIntelRuleTemplateGuid = '00000000-0000-0000-0000-000000000000' // <-- Replace this placeholder GUID
-var threatIntelRuleName = guid(workspace.id, 'CTI-ThreatIntelMatch', threatIntelRuleTemplateGuid) // Generate a unique name
+var threatIntelRuleGuids = [
+  '23e326f1-a69d-40f3-850b-9143f6cb189f' // IP address
+  '044b68dd-a385-4dfa-b498-193d4919501b' // Domain name
+  'ea862697-47e1-4940-a55a-fe66610df9e5' // File hash
+  'ac9a37e1-18be-455e-b05c-94889875ed09' // URL
+]
 
-resource analyticRule 'Microsoft.SecurityInsights/alertRules@2023-02-01-preview' = if (enableSentinelIntegration && enableAnalyticsRules) {
-  // Alert rules are deployed as child resources of the Log Analytics workspace.
-  scope: workspace // Deploy within the workspace scope
-  name: threatIntelRuleName
-  kind: 'ThreatIntelligence'
-  properties: {
-    enabled: true
-    alertRuleTemplateName: threatIntelRuleTemplateGuid // Required for ThreatIntelligence kind
-    // Tactics are inherited from the template for ThreatIntelligence kind rules
-    // Severity, productFilter, sourceSettings are not applicable for ThreatIntelligence kind
+resource analyticRules 'Microsoft.SecurityInsights/alertRules@2023-02-01-preview' = [
+  for ruleGuid in threatIntelRuleGuids: if (enableSentinelIntegration && enableAnalyticsRules) {
+    name: guid(workspace.id, 'CTI-ThreatIntelMatch', ruleGuid)
+    kind: 'ThreatIntelligence'
+    properties: {
+      enabled: true
+      alertRuleTemplateName: ruleGuid
+    }
+    scope: workspace
   }
-  // dependsOn is implicitly handled by the scope property
-}
+]
 
 resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = if (enableSentinelIntegration && enableHuntingQueries) {
   parent: workspace

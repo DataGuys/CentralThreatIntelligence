@@ -65,7 +65,7 @@ module coreInfrastructure './core-infrastructure.bicep' = {
   }
 }
 
-module customTables './custom-tables.bicep' = {
+module customTables './custom-tables.json' = {
   name: 'customTables'
   params: {
     ctiWorkspaceName: ctiWorkspaceName
