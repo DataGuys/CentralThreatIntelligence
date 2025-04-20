@@ -1,5 +1,4 @@
 // Advanced Central Threat Intelligence (CTI) Solution – v2.1
-// Updated: 2025‑04‑19 – removed utcNow() from parameter default
 
 targetScope = 'resourceGroup'
 
@@ -65,14 +64,6 @@ module coreInfrastructure './core-infrastructure.bicep' = {
   }
 }
 
-//module customTables './custom-tables.json' = {
-//  name: 'customTables'
-//  params: {
-//    ctiWorkspaceName: ctiWorkspaceName
-//  }
-//  dependsOn: [ coreInfrastructure ]
-//}
-
 module apiConnections './api-connections.bicep' = {
   name: 'apiConnections'
   params: {
@@ -113,93 +104,6 @@ module logicApps 'logic-apps/deployment.bicep' = {
     tags: tags
   }
 }
-
-module sentinelIntegration './sentinel-integration.bicep' = {
-  name: 'sentinelIntegration'
-  params: {
-    ctiWorkspaceName: ctiWorkspaceName
-    ctiWorkspaceId: coreInfrastructure.outputs.ctiWorkspaceId
-    location: location
-    enableSentinelIntegration: enableSentinelIntegration
-    enableAnalyticsRules: enableAnalyticsRules
-    enableHuntingQueries: enableHuntingQueries
-    existingSentinelWorkspaceId: ''
-    tags: tags
-  }
-}
-
-//resource ctiDashboardWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
-//  name: 'CTIDashboard-${ctiWorkspaceName}' // Unique name for the workbook
-//  location: location
-//  tags: tags
-//  kind: 'shared' // Or 'user' depending on requirement
-//  properties: {
-//    displayName: 'CTI Dashboard'
-//    serializedData: loadTextContent('./CTI-ManualIndicatorSubmission.workbook') // Assuming content is moved to a separate file
-//    category: 'workbook' // Standard category for workbooks
-//    sourceId: coreInfrastructure.outputs.ctiWorkspaceId // Link workbook to the Log Analytics workspace
-//    version: 'Notebook/1.0' // Optional: Specify workbook version if needed
-//  }
-//}
-
-// Note: The large JSON content for the workbook has been moved to a separate file 'workbook-content.json'
-// Create a file named 'workbook-content.json' in the same directory and paste the JSON content into it.
-// Example content for 'workbook-content.json':
-/*
-{
-  "version": "Notebook/1.0",
-  "items": [
-    {
-      "type": 1, // Use numeric type for text block
-      "content": {
-        "json": "# Threat Intelligence Dashboard"
-      },
-      "name": "Title"
-    },
-    {
-      "type": 9, // Use numeric type for parameters block
-      "content": {
-        "version": "KqlParameterItem/1.0",
-        "parameters": [
-          {
-            "id": "timeRange",
-            "version": "KqlParameterItem/1.0",
-            "name": "TimeRange",
-            "label": "Time Range",
-            "type": 4, // Time range parameter type
-            "isRequired": true, // Make parameter required
-            "value": {
-              "durationMs": 86400000 // Default to 1 day
-            },
-            "typeSettings": {
-              "selectableValues": [
-                { "durationMs": 3600000, "label": "Last hour" },
-                { "durationMs": 86400000, "label": "Last 24 hours" },
-                { "durationMs": 604800000, "label": "Last 7 days" },
-                { "durationMs": 2592000000, "label": "Last 30 days" }
-              ],
-              "includeTime": true // Include time picker
-            }
-          }
-        ],
-        "style": "above", // Parameter style
-        "queryType": 0, // Query type (usually 0 for parameters)
-        "resourceType": "microsoft.operationalinsights/workspaces" // Resource type context
-      },
-      "name": "TimeRangeDropdown"
-    }
-    // Add other workbook items (queries, visualizations) here
-  ],
-  "styleSettings": {}, // Empty or configure style settings
-  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json" // Optional: Schema reference
-}
-*/
-
-
-// Removed incorrect variable declarations that were likely placeholders
-// var someVariable = 'properValue'
-// var interpolatedString = '${someVariable}-suffix'
-// var anotherVariable = 'anotherValue'
 
 output ctiWorkspaceId string = coreInfrastructure.outputs.ctiWorkspaceId
 output ctiWorkspaceName string = ctiWorkspaceName
