@@ -135,6 +135,7 @@ module securityCopilotConnector 'copilot-connector.bicep' = if (enableSecurityCo
     ctiWorkspaceId: ctiWorkspaceId
     enableSecurityCopilot: enableSecurityCopilot
     dceNameForCopilot: dceNameForCopilot
+    // dceCopilotIntegrationName: dceCopilotIntegrationName // Removed: Parameter not defined in copilot-connector.bicep
     tags: tags
   }
   dependsOn: [
