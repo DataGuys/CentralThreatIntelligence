@@ -30,11 +30,11 @@ resource entraIDConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
           defaultValue: {}
           type: 'Object'
         }
-        'workspaceName': {
+        workspaceName: {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }
-        'graphApiUrl': {
+        graphApiUrl: {
           defaultValue: graphApiUrl
           type: 'String'
         }
@@ -61,8 +61,8 @@ resource entraIDConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
             method: 'get'
             path: '/v1.0/identityProtection/riskyUsers'
             queries: {
-              $filter: 'riskLevel eq \'high\''
-              $select: 'id,userPrincipalName,riskLevel,riskState,riskDetail,riskLastUpdatedDateTime'
+              '$filter': 'riskLevel eq \'high\''
+              '$select': 'id,userPrincipalName,riskLevel,riskState,riskDetail,riskLastUpdatedDateTime'
             }
           }
         }

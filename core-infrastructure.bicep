@@ -19,6 +19,10 @@ param logicAppSku string
 param maxElasticWorkerCount int
 param tags object
 
+// Variables for Key Vault network ACLs
+var ipRulesConfig = [for ipAddress in allowedIpAddresses: { value: ipAddress }]
+var vnetRulesConfig = [for subnetId in allowedSubnetIds: { id: subnetId }]
+
 // User‑assigned managed identity for Logic Apps
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: managedIdentityName
@@ -66,12 +70,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
-      ipRules: empty(allowedIpAddresses) ? [] : [for ip in allowedIpAddresses: {
-        value: ip
-      }]
-      virtualNetworkRules: empty(allowedSubnetIds) ? [] : [for subnetId in allowedSubnetIds: {
-        id: subnetId
-      }]
+      ipRules: ipRulesConfig
+      virtualNetworkRules: vnetRulesConfig
     }
   }
 }

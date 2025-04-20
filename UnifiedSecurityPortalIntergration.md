@@ -20,7 +20,7 @@ There are two primary methods for integrating your CTI solution with the unified
 
 This approach adds your CTI Log Analytics workspace directly to the Microsoft Defender portal.
 
-#### Implementation Steps:
+#### Implementation Steps
 
 1. **Enable Microsoft Sentinel on your CTI workspace** (if not already done)
    - This is configured in the Bicep template with the `enableSentinelIntegration` parameter
@@ -39,13 +39,14 @@ This approach adds your CTI Log Analytics workspace directly to the Microsoft De
 
 If you already have a primary Microsoft Sentinel workspace in the unified SecOps portal, you can integrate your CTI workspace through cross-workspace queries.
 
-#### Implementation Steps:
+#### Implementation Steps for Cross-Workspace Integration
 
 1. **Connect your primary Sentinel workspace to the Microsoft Defender portal** (if not already done)
 
 2. **Configure cross-workspace queries**:
    - Use the `workspace()` function in KQL to query across both workspaces
    - Example:
+
      ```kql
      let CTIWorkspaceId = "<your-cti-workspace-resource-id>";
      
@@ -61,13 +62,13 @@ If you already have a primary Microsoft Sentinel workspace in the unified SecOps
 
 ## Recommended Configuration
 
-### For New Deployments:
+### For New Deployments
 
 1. Deploy the CTI solution with `enableSentinelIntegration = true`
 2. Connect the CTI workspace directly to the Microsoft Defender portal (Option 1)
 3. Configure the CTI workspace as a secondary workspace if you already have a primary Sentinel workspace
 
-### For Existing Sentinel Deployments:
+### For Existing Sentinel Deployments
 
 1. Deploy the CTI solution with `enableSentinelIntegration = true`
 2. Use the cross-workspace query approach (Option 2)

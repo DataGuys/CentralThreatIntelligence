@@ -33,19 +33,19 @@ resource defenderEndpointConnector 'Microsoft.Logic/workflows@2019-05-01' = {
           defaultValue: {}
           type: 'Object'
         }
-        'tenantId': {
+        tenantId: {
           defaultValue: tenantId
           type: 'String'
         }
-        'clientId': {
+        clientId: {
           defaultValue: appClientId
           type: 'String'
         }
-        'workspaceName': {
+        workspaceName: {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }
-        'securityApiUrl': {
+        securityApiUrl: {
           defaultValue: securityApiBaseUrl
           type: 'String'
         }

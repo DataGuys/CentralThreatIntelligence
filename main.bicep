@@ -1,5 +1,5 @@
-// Advanced Central Threat Intelligence (CTI) Solution – v2.1
-// Updated: 2025‑04‑19 – removed utcNow() from parameter default
+// Advanced Central Threat Intelligence (CTI) Solution – v2.1
+// Updated: 2025‑04‑19 – removed utcNow() from parameter default
 
 targetScope = 'resourceGroup'
 
@@ -15,10 +15,14 @@ param enableSentinelIntegration bool = true
 param enableAnalyticsRules bool = true
 param enableHuntingQueries bool = true
 
+@description('Application (client) ID for the service principal')
 param appClientId string
+
+@description('Tenant ID, defaults to the subscription tenant')
 param tenantId string = subscription().tenantId
 
 @secure()
+@description('Client secret for the service principal')
 param clientSecret string = ''
 
 @description('Base set of tags applied to all resources')
@@ -28,7 +32,9 @@ param baseTags object = {
   createdBy: 'Bicep'
 }
 
-var deploymentDate = utcNow('yyyy-MM-dd')
+@description('Current UTC date in yyyy-MM-dd format')
+param deploymentDate string = utcNow('yyyy-MM-dd')
+
 var tags = union(baseTags, {
   deploymentDate: deploymentDate
 })
@@ -102,11 +108,10 @@ module logicApps 'logic-apps/deployment.bicep' = {
     enableMDTI: enableMDTI
     enableSecurityCopilot: enableSecurityCopilot
     dceNameForCopilot: parameters.outputs.dceNameForCopilot
-    dceCopilotIntegrationName: parameters.outputs.dceCopilotIntegrationName
+    // dceCopilotIntegrationName: parameters.outputs.dceCopilotIntegrationName // Removed as it's not a valid parameter for the logicApps module
     diagnosticSettingsRetentionDays: 30
     tags: tags
   }
-  dependsOn: [ apiConnections ]
 }
 
 module sentinelIntegration './sentinel-integration.bicep' = {
@@ -124,23 +129,36 @@ module sentinelIntegration './sentinel-integration.bicep' = {
   dependsOn: [ customTables ]
 }
 
-resource workbook 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
-  // ...existing code...
+resource ctiDashboardWorkbook 'Microsoft.Insights/workbooks@2022-04-01' = {
+  name: 'CTIDashboard-${ctiWorkspaceName}' // Unique name for the workbook
+  location: location
+  tags: tags
+  kind: 'shared' // Or 'user' depending on requirement
   properties: {
-    // ...existing code...
-    content: '''
+    displayName: 'CTI Dashboard'
+    serializedData: loadTextContent('./CTI-ManualIndicatorSubmission.workbook') // Assuming content is moved to a separate file
+    category: 'workbook' // Standard category for workbooks
+    sourceId: coreInfrastructure.outputs.ctiWorkspaceId // Link workbook to the Log Analytics workspace
+    version: 'Notebook/1.0' // Optional: Specify workbook version if needed
+  }
+}
+
+// Note: The large JSON content for the workbook has been moved to a separate file 'workbook-content.json'
+// Create a file named 'workbook-content.json' in the same directory and paste the JSON content into it.
+// Example content for 'workbook-content.json':
+/*
 {
   "version": "Notebook/1.0",
   "items": [
     {
-      "type": "text",
+      "type": 1, // Use numeric type for text block
       "content": {
         "json": "# Threat Intelligence Dashboard"
       },
       "name": "Title"
     },
     {
-      "type": "dropdown",
+      "type": 9, // Use numeric type for parameters block
       "content": {
         "version": "KqlParameterItem/1.0",
         "parameters": [
@@ -149,36 +167,40 @@ resource workbook 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-0
             "version": "KqlParameterItem/1.0",
             "name": "TimeRange",
             "label": "Time Range",
-            "type": 4,
+            "type": 4, // Time range parameter type
+            "isRequired": true, // Make parameter required
             "value": {
-              "durationMs": 86400000
+              "durationMs": 86400000 // Default to 1 day
             },
             "typeSettings": {
               "selectableValues": [
-                { "durationMs": 3600000 },
-                { "durationMs": 86400000 },
-                { "durationMs": 604800000 },
-                { "durationMs": 2592000000 }
-              ]
+                { "durationMs": 3600000, "label": "Last hour" },
+                { "durationMs": 86400000, "label": "Last 24 hours" },
+                { "durationMs": 604800000, "label": "Last 7 days" },
+                { "durationMs": 2592000000, "label": "Last 30 days" }
+              ],
+              "includeTime": true // Include time picker
             }
           }
-        ]
+        ],
+        "style": "above", // Parameter style
+        "queryType": 0, // Query type (usually 0 for parameters)
+        "resourceType": "microsoft.operationalinsights/workspaces" // Resource type context
       },
       "name": "TimeRangeDropdown"
     }
-    // Additional workbook elements with proper comma separation
+    // Add other workbook items (queries, visualizations) here
   ],
-  "styleSettings": {
-    "showBorder": true
-  }
+  "styleSettings": {}, // Empty or configure style settings
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json" // Optional: Schema reference
 }
-'''
-    // ...existing code...
-  }
-}
+*/
 
-var someVariable = 'properValue'  // Instead of using $someVariable
-var anotherVariable = 'anotherValue'  // Instead of using $anotherVariable
+
+// Removed incorrect variable declarations that were likely placeholders
+// var someVariable = 'properValue'
+// var interpolatedString = '${someVariable}-suffix'
+// var anotherVariable = 'anotherValue'
 
 output ctiWorkspaceId string = coreInfrastructure.outputs.ctiWorkspaceId
 output ctiWorkspaceName string = ctiWorkspaceName

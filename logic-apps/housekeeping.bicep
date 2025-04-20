@@ -28,7 +28,7 @@ resource housekeepingLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
           defaultValue: {}
           type: 'Object'
         }
-        'workspaceName': {
+        workspaceName: {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }

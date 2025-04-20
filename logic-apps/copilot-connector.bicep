@@ -8,7 +8,6 @@ param diagnosticSettingsRetentionDays int
 param ctiWorkspaceId string
 param enableSecurityCopilot bool
 param dceNameForCopilot string
-param dceCopilotIntegrationName string
 param tags object
 
 resource securityCopilotConnector 'Microsoft.Logic/workflows@2019-05-01' = if (enableSecurityCopilot) {
@@ -31,7 +30,7 @@ resource securityCopilotConnector 'Microsoft.Logic/workflows@2019-05-01' = if (e
           defaultValue: {}
           type: 'Object'
         }
-        'workspaceName': {
+        workspaceName: {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }

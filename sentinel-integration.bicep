@@ -41,49 +41,41 @@ var threatIntelRuleTemplateGuid = '00000000-0000-0000-0000-000000000000' // <-- 
 var threatIntelRuleName = guid(workspace.id, 'CTI-ThreatIntelMatch', threatIntelRuleTemplateGuid) // Generate a unique name
 
 resource analyticRule 'Microsoft.SecurityInsights/alertRules@2023-02-01-preview' = if (enableSentinelIntegration && enableAnalyticsRules) {
-  parent: workspace // Use the existing workspace reference as parent
-  name: threatIntelRuleName // Name must be a GUID for ThreatIntelligence kind
+  // Alert rules are deployed as child resources of the Log Analytics workspace.
+  scope: workspace // Deploy within the workspace scope
+  name: threatIntelRuleName
   kind: 'ThreatIntelligence'
   properties: {
-    displayName: 'Threat Intelligence Indicator Match'
     enabled: true
     alertRuleTemplateName: threatIntelRuleTemplateGuid // Required for ThreatIntelligence kind
-    // Tactics are often associated with TI rules
-    tactics: [
-      'InitialAccess'
-      'CommandAndControl'
-    ]
+    // Tactics are inherited from the template for ThreatIntelligence kind rules
     // Severity, productFilter, sourceSettings are not applicable for ThreatIntelligence kind
   }
-  dependsOn: [
-    // Ensure Sentinel solution is provisioned before creating rules if it's being deployed
-    // No explicit dependency needed if using an existing Sentinel workspace
-    sentinelSolution
-  ]
+  // dependsOn is implicitly handled by the scope property
 }
 
 resource huntingQuery 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = if (enableSentinelIntegration && enableHuntingQueries) {
   parent: workspace
   name: 'CTI-DomainIOCMatch'
   properties: {
-    category: 'Hunting Queries',  // Added comma
-    displayName: 'Domain IOC matches in DNS queries',  // Added comma
+    category: 'Hunting Queries'
+    displayName: 'Domain IOC matches in DNS queries'
     query: '''
       let iocs = CTI_DomainIndicators_CL | where Active_b == true | project DomainName_s;
       DnsEvents | where Name has_any (iocs)
-    ''', // Corrected query slightly for clarity
-    version: 2,  // Added comma
+    '''
+    version: 2
     tags: [
       {
-        name: 'description',
+        name: 'description'
         value: 'Finds matches of domain indicators in DNS query logs'
-      },
+      }
       {
-        name: 'tactics',
+        name: 'tactics'
         value: 'CommandAndControl,Exfiltration'
-      },
+      }
       {
-        name: 'techniques',
+        name: 'techniques'
         value: 'T1071,T1567'
       }
     ]

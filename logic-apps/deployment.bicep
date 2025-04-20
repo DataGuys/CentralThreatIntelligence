@@ -13,7 +13,6 @@ param securityApiBaseUrl string
 param enableMDTI bool
 param enableSecurityCopilot bool
 param dceNameForCopilot string
-param dceCopilotIntegrationName string
 param diagnosticSettingsRetentionDays int
 param tags object
 
@@ -136,7 +135,6 @@ module securityCopilotConnector 'copilot-connector.bicep' = if (enableSecurityCo
     ctiWorkspaceId: ctiWorkspaceId
     enableSecurityCopilot: enableSecurityCopilot
     dceNameForCopilot: dceNameForCopilot
-    dceCopilotIntegrationName: dceCopilotIntegrationName
     tags: tags
   }
   dependsOn: [
@@ -158,9 +156,7 @@ module housekeeping 'housekeeping.bicep' = {
     ctiWorkspaceId: ctiWorkspaceId
     tags: tags
   }
-  dependsOn: [
-    enableSecurityCopilot ? securityCopilotConnector : exoConnector
-  ]
+  dependsOn: enableSecurityCopilot ? [ securityCopilotConnector ] : [ exoConnector ]
 }
 
 // Threat Feed Sync Logic App

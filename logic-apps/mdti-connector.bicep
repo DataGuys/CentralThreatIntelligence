@@ -33,15 +33,15 @@ resource mdtiConnectorLogicApp 'Microsoft.Logic/workflows@2019-05-01' = if (enab
           defaultValue: {}
           type: 'Object'
         }
-        'workspaceName': {
+        workspaceName: {
           defaultValue: ctiWorkspaceName
           type: 'String'
         }
-        'tenantId': {
+        tenantId: {
           defaultValue: tenantId
           type: 'String'
         }
-        'clientId': {
+        clientId: {
           defaultValue: appClientId
           type: 'String'
         }
